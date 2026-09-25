@@ -20,6 +20,10 @@ Or, as a true one-liner from anywhere:
 curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/setup.sh | bash
 ```
 
+> 🇧🇩 **বাংলায় ধাপে ধাপে গাইড:** [`NEXT_TIME_BANGLA.md`](NEXT_TIME_BANGLA.md) —
+> পরেরবার কী লিখতে হবে, কয়টা ক্লিক লাগবে, টোকেন কতদিন চলবে, আর সমস্যা হলে
+> কী করবেন, সব এক জায়গায়। (Human-readable; agents can ignore it.)
+
 ---
 
 ## For AI agents — read this first
