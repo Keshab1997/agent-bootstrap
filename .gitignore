@@ -1,0 +1,43 @@
+# ---- credentials: never commit these --------------------------------------
+secrets/
+secret/
+*.pem
+*.key
+*.p12
+*.pfx
+gh_token.txt
+gh_refresh_token.txt
+gh_state.json
+pat.txt
+token.txt
+.passphrase
+passphrase.txt
+pw.txt
+
+# ---- vault ----------------------------------------------------------------
+# vault.json holds only ciphertext and is safe to commit, but local scratch
+# copies should not be tracked.
+vault.local.json
+vault.*.local.json
+
+# ---- environment ----------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# ---- os / editor ----------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# ---- python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---- node -----------------------------------------------------------------
+node_modules/

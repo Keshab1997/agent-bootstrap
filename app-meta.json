@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "github": {
+    "account": "Keshab1997",
+    "account_id": 152651492,
+    "display_name": "Keshab Sarkar",
+    "profile_url": "https://github.com/Keshab1997"
+  },
+  "app": {
+    "slug": "keshab-flutter-assistant",
+    "name": "keshab-flutter-assistant",
+    "app_id": 4611920,
+    "client_id": "Iv23lieh6Kastc59yOsf",
+    "device_flow_enabled": true,
+    "requires_client_secret_for_device_flow": false
+  },
+  "installation": {
+    "id": 154119208,
+    "account": "Keshab1997",
+    "repository_selection": "all",
+    "target_type": "User",
+    "access_tokens_url": "https://api.github.com/app/installations/154119208/access_tokens"
+  },
+  "endpoints": {
+    "device_code": "https://github.com/login/device/code",
+    "verification_uri": "https://github.com/login/device",
+    "access_token": "https://github.com/login/oauth/access_token",
+    "api": "https://api.github.com",
+    "api_version": "2022-11-28"
+  },
+  "token_policy": {
+    "user_access_token_prefix": "ghu_",
+    "user_access_token_lifetime_hours": 8,
+    "refresh_token_prefix": "ghr_",
+    "refresh_token_lifetime_days": 181,
+    "refresh_token_rotates_on_use": true,
+    "refresh_token_rotation_warning": "GitHub App refresh tokens are single-use. Do NOT store one in a shared place and reuse it: the first caller to refresh invalidates every other copy. Re-run the device flow instead.",
+    "installation_token_prefix": "ghs_",
+    "installation_token_lifetime_hours": 1,
+    "installation_token_requires": "App private key (.pem) to sign a JWT - a user access token is NOT accepted by /app/installations/{id}/access_tokens (returns 401 'A JSON web token could not be decoded').",
+    "scopes_field_is_empty_for_github_apps": true,
+    "rate_limit_per_hour": 5000
+  },
+  "granted_app_permissions": {
+    "write": [
+      "contents", "workflows", "actions", "actions_variables", "pull_requests",
+      "issues", "discussions", "deployments", "environments", "merge_queues",
+      "checks", "pages", "packages", "administration", "repository_hooks",
+      "attestations", "security_events", "vulnerability_alerts",
+      "repository_advisories", "secret_scanning_alerts", "dependabot_secrets",
+      "codespaces", "codespaces_secrets", "codespaces_lifecycle_admin",
+      "agent_tasks", "agent_secrets", "agent_variables",
+      "copilot_agent_settings", "code_quality", "license_compliance_alerts",
+      "repository_custom_properties", "secret_scanning_bypass_requests",
+      "repo_secret_scanning_dismissal_requests"
+    ],
+    "read": ["metadata", "repository_projects", "codespaces_metadata"]
+  },
+  "secrets_in_this_repo": "none",
+  "notes": [
+    "client_id is NOT a secret for GitHub Apps. Device flow authenticates with client_id alone.",
+    "This repo is intentionally public so that any AI agent can clone it with zero credentials.",
+    "Nothing here can be used to access Keshab1997's account without a human approving a device code in a browser."
+  ]
+}
