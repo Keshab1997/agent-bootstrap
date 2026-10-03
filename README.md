@@ -59,6 +59,16 @@ You are expected to do the following. It is the whole job.
 
 ---
 
+## Starting a fresh agent — one paste
+
+When a new agent session starts, hand it [`AGENT_START_PROMPT.md`](AGENT_START_PROMPT.md):
+pairing, the Flutter SDK step, the check-when-needed policy, the manual-CI rule
+and the sandbox's traps, all in one copy-paste block. A plain-text twin
+([`PROMPT-FOR-NEW-AGENT.txt`](PROMPT-FOR-NEW-AGENT.txt)) and a one-click-copy
+page ([`AGENT_PROMPT_COPY.html`](AGENT_PROMPT_COPY.html)) carry the same text.
+
+---
+
 ## What you get
 
 | | |
@@ -218,10 +228,14 @@ for cloning; `setup.sh` also works from raw URLs if you give it one.
 
 ```
 agent-bootstrap/
-├── README.md          ← you are here; agents read this
-├── gh_app.py          ← device flow + token manager + API client (stdlib only)
-├── app-meta.json      ← App, installation, endpoints, permissions, token policy
-├── setup.sh           ← curl | bash one-shot installer
-├── vault.py           ← optional passphrase-encrypted token store
-└── .gitignore         ← keeps secrets/ out of git
+├── README.md              ← you are here; agents read this
+├── gh_app.py              ← device flow + token manager + API client (stdlib only)
+├── app-meta.json          ← App, installation, endpoints, permissions, token policy
+├── setup.sh               ← curl | bash one-shot installer
+├── vault.py               ← optional passphrase-encrypted token store
+├── AGENT_START_PROMPT.md  ← hand this to a fresh agent session (one paste)
+├── PROMPT-FOR-NEW-AGENT.txt ← same prompt as plain text
+├── AGENT_PROMPT_COPY.html ← same prompt with a one-click copy button
+├── RESUME.md              ← workspace resume guide (paths, traps, policies)
+└── .gitignore             ← keeps secrets/ out of git
 ```
