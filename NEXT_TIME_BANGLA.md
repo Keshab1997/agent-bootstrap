@@ -25,6 +25,27 @@ https://github.com/Keshab1997/agent-bootstrap clone করে README.md অন�
 আমাকে ৮-অক্ষরের code টা দেখাও, আর আমি browser-এ approve না করা পর্যন্ত অপেক্ষা করো।
 ```
 
+### 🐦 Flutter/Dart project হলে — এই ভার্সনটাই paste করুন (একবারেই সব)
+
+```
+Clone https://github.com/Keshab1997/agent-bootstrap and follow its README.md to
+connect to my GitHub via device flow. Then run: python3 gh_app.py connect
+Show me the 8-character code clearly and wait until I approve it in my browser.
+Then, since this is a Flutter project, also run bash <(curl -fsSL
+https://raw.githubusercontent.com/Keshab1997/flutter-bootstrap/main/setup.sh)
+--quiet --json to give yourself a Flutter SDK, and run flutter pub get,
+flutter analyze and flutter test on <repo/path>.
+```
+
+বাংলায়:
+
+```
+agent-bootstrap দিয়ে আমার GitHub-এ connect হও (device flow, ৮-অক্ষরের code দেখাও,
+আমি approve করা পর্যন্ত অপেক্ষা করো)। এটা Flutter project, তাই তারপর
+flutter-bootstrap-এর setup.sh চালিয়ে নিজের sandbox-এ Flutter SDK বসাও,
+তারপর <repo/path>-এ flutter pub get, flutter analyze আর flutter test চালাও।
+```
+
 ### তারপর আপনার কাজ মাত্র ৩টা ক্লিক
 
 | ধাপ | কী করবেন | সময় |
@@ -54,6 +75,22 @@ python3 gh_app.py connect
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/setup.sh | bash
 ```
+
+**GitHub + Flutter একসাথে** (Flutter/Dart project-এ কাজ করলে):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/setup.sh \
+  | bash -s -- --with-flutter
+```
+
+Flutter-এর জন্য আলাদা করে চালাতে চাইলে:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Keshab1997/flutter-bootstrap/main/setup.sh)
+```
+
+⏱️ Flutter SDK নামতে ~৪০ সেকেন্ড লাগে, আর ওটা ২.৫ GB — তাই যেটা লাগে শুধু সেটাই চালান।
+Flutter setup ব্যর্থ হলেও GitHub connection ঠিক থাকে।
 
 দরকারি কমান্ড:
 
@@ -105,6 +142,19 @@ python3 gh_app.py revoke          # connection বিচ্ছিন্ন
 GitHub → Settings → Applications → Installed GitHub Apps →
 `keshab-flutter-assistant` → **Uninstall**
 (এটা করলে সব token সাথে সাথেই বাতিল হয়ে যাবে)
+
+---
+
+## 🐦 Flutter নিয়ে ৩টা কথা
+
+1. **Sandbox-এ Flutter আগে থেকে থাকে না**, আর install করা SDK পরের session-এ
+   মুছে যায় — তাই প্রতিবার ~৪০ সেকেন্ডে আবার বসাতে হয় (`flutter-bootstrap` এর
+   কাজ এটাই)।
+2. **`--with-flutter` দিলে একবারেই দুটো কাজ** — GitHub connect + Flutter SDK।
+   Flutter না লাগলে দেবেন না (২.৫ GB)।
+3. **Install হওয়ার পর `flutter analyze`, `flutter test` সরাসরি লিখলেই চলে** —
+   আলাদা করে PATH সেট করতে হয় না। বিস্তারিত: `flutter-bootstrap`-এর
+   `NEXT_TIME_BANGLA.md`।
 
 ---
 

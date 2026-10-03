@@ -4,11 +4,15 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/setup.sh | bash
 #
+#   # GitHub connection AND a Flutter SDK, in one command:
+#   curl -fsSL .../setup.sh | bash -s -- --with-flutter
+#
 # What it does:
 #   1. checks python3 + network to api.github.com
 #   2. fetches gh_app.py + app-meta.json (clone if git is available, else raw)
 #   3. starts the OAuth device flow and prints the 8-character user code
 #   4. polls until the human approves, then stores the token in ./secrets/
+#   5. with --with-flutter: also installs the Flutter SDK via flutter-bootstrap
 #
 # Nothing in this script or repo is a secret. No credentials are downloaded.
 # ---------------------------------------------------------------------------
@@ -18,6 +22,28 @@ REPO="Keshab1997/agent-bootstrap"
 BRANCH="main"
 RAW="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
 DEST="${BOOTSTRAP_DIR:-$PWD/agent-bootstrap}"
+WITH_FLUTTER=0
+FLUTTER_SETUP_URL="https://raw.githubusercontent.com/Keshab1997/flutter-bootstrap/main/setup.sh"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --with-flutter|--flutter) WITH_FLUTTER=1; shift ;;
+    --no-flutter)             WITH_FLUTTER=0; shift ;;
+    -h|--help)                awk 'NR>1 && /^#/ {sub(/^# ?/,""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
+    *) echo "unknown option: $1 (try --help)" >&2; exit 2 ;;
+  esac
+done
+
+# Flutter/Dart projects need an SDK that the sandbox does not have. This is a
+# separate public repo so that the pairing flow above stays credential-only.
+install_flutter() {
+  step "Flutter SDK (flutter-bootstrap)"
+  if ! bash <(curl -fsSL "$FLUTTER_SETUP_URL") 2>&1; then
+    say "  ! Flutter setup failed -- GitHub access still works. Retry later with:"
+    say "    curl -fsSL $FLUTTER_SETUP_URL | bash"
+    return 1
+  fi
+}
 
 say()  { printf '%s\n' "$*"; }
 step() { printf '\n\033[1;36m==>\033[0m %s\n' "$*"; }
@@ -81,6 +107,7 @@ if ( cd "$DEST" && python3 gh_app.py status >/dev/null 2>&1 ); then
   say ""
   say "Already connected -- nothing to do."
   say "  whoami : python3 ${DEST}/gh_app.py whoami"
+  if [ "$WITH_FLUTTER" = 1 ]; then install_flutter || true; fi
   exit 0
 fi
 say "  no valid token found, pairing required"
@@ -92,9 +119,12 @@ say "  >>> A HUMAN MUST APPROVE THIS IN A BROWSER <<<"
 say ""
 ( cd "$DEST" && python3 gh_app.py connect )
 
+if [ "$WITH_FLUTTER" = 1 ]; then install_flutter || true; fi
+
 step "done"
 say "  token stored in : ${DEST}/secrets/gh_token.txt  (chmod 600)"
 say "  try it out      : python3 ${DEST}/gh_app.py whoami"
 say "  list repos      : python3 ${DEST}/gh_app.py repos --limit 20"
 say "  raw API call    : python3 ${DEST}/gh_app.py api GET /user"
 say "  disconnect      : python3 ${DEST}/gh_app.py revoke"
+[ "$WITH_FLUTTER" = 1 ] || say "  flutter later   : re-run with --with-flutter (adds a Flutter SDK)"
