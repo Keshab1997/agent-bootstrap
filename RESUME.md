@@ -49,7 +49,7 @@ the workspace.
   git config core.fileMode false   # kills exec-bit noise from the sandbox
   git config user.name "Keshab Sarkar"
   git config user.email "Keshab1997@users.noreply.github.com"
-  git config credential.helper '!f(){ echo username=x-access-token; echo "password=$(cat /home/user/agent-bootstrap/secrets/gh_token.txt)"; }'   # token never written to disk
+  git config credential.helper '!f(){ echo username=x-access-token; echo "password=$(cat /home/user/agent-bootstrap/secrets/gh_token.txt)"; }; f'   # token never written to disk
   ```
 
 - Token strategy: ever **bypass this checkpoint** — it is correct behavior for

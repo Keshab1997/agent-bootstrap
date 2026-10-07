@@ -89,7 +89,7 @@ log first**, then fix.
   git config core.fileMode false
   git config user.name "Keshab Sarkar"
   git config user.email "Keshab1997@users.noreply.github.com"
-  git config credential.helper '!f(){ echo username=x-access-token; echo "password=$(cat /home/user/agent-bootstrap/secrets/gh_token.txt)"; }'
+  git config credential.helper '!f(){ echo username=x-access-token; echo "password=$(cat /home/user/agent-bootstrap/secrets/gh_token.txt)"; }; f'
   ```
 - Exec-bit noise on `gradlew` / `*.jar` files → fixed by `core.fileMode false`.
 - `raw.githubusercontent.com` can serve a **stale file for ~5 minutes** after a
