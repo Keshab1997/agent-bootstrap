@@ -6,9 +6,8 @@ Clone this repo — no credentials needed, it is public on purpose — and any A
 agent can pair with **Keshab1997**'s GitHub in one step instead of ten.
 
 ```bash
-git clone https://github.com/Keshab1997/agent-bootstrap.git
-cd agent-bootstrap
-python3 gh_app.py connect          # prints an XXXX-XXXX code
+git clone https://github.com/Keshab1997/agent-bootstrap.git /home/user/agent-bootstrap
+python3 /home/user/agent-bootstrap/gh_app.py connect   # prints an XXXX-XXXX code
 ```
 
 Read the code to the human, they tap *Authorize* in a browser, and ~10 seconds
@@ -30,8 +29,11 @@ curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/set
 
 You are expected to do the following. It is the whole job.
 
-1. **Run** `python3 gh_app.py connect`
-2. **Tell the human**, verbatim and prominently:
+1. **Run** `python3 gh_app.py connect`. It self-checks first: if a valid token
+   is already stored it prints `ALREADY CONNECTED -- device flow skipped` and
+   exits. In that case there is nothing to do — **do not ask the human to
+   authorize again.** (Genuinely dead token? `connect --force`.)
+2. **Only if it printed a code**, tell the human, verbatim and prominently:
    > Open <https://github.com/login/device> and enter the code **XXXX-XXXX**
 3. **Wait.** The script polls every 5 s and finishes on its own. Do not ask for
    a token, a password, a PAT, or any secret — the human only approves in the
@@ -54,8 +56,15 @@ You are expected to do the following. It is the whole job.
 - Never commit anything under `secrets/` (already git-ignored).
 - Tokens last **8 hours**. Every `gh_app.py` command auto-refreshes when fewer
   than 5 minutes remain, so just keep using it.
-- If `status` reports `HTTP 401`, run `connect` again. Re-pairing is normal and
-  costs the human one click.
+- If `status` reports `HTTP 401` (verdict `NOT WORKING`), run `connect` again.
+  Re-pairing is normal and costs the human one click — but check first: a
+  working session must never be asked to authorize twice.
+- Approval arriving after your turn ended? The code stays valid ~15 min — resume
+  instead of starting over: `python3 device_pair.py poll 60`
+  (`device_pair.py start` saves the code in `secrets/device_state.json`).
+- One pair per sandbox: clone into `/home/user/agent-bootstrap`, because only
+  `/home/user` survives between turns. A clone in `/tmp` loses its token and
+  looks unpaired every time.
 
 ---
 
@@ -92,8 +101,12 @@ Full machine-readable details: [`app-meta.json`](app-meta.json)
 ## Commands
 
 ```bash
-python3 gh_app.py connect              # pair (device flow)
-python3 gh_app.py status               # health + expiry
+python3 gh_app.py connect              # pair; self-skips if already paired
+python3 gh_app.py connect --force      # pair again on purpose (new code)
+python3 gh_app.py status               # health + expiry; exit 0 only if paired
+python3 device_pair.py status          # is a device code already pending?
+python3 device_pair.py start           # get a code and save it (resumable)
+python3 device_pair.py poll 60         # resume polling a saved code
 python3 gh_app.py whoami
 python3 gh_app.py repos --limit 20
 python3 gh_app.py installations        # the App's granted permissions
@@ -211,6 +224,30 @@ for cloning; `setup.sh` also works from raw URLs if you give it one.
 
 ---
 
+## Why is it asking me to authorize *again*?
+
+Short answer: it shouldn't. Every known cause is handled in the code — if an
+agent still asks, one of these was skipped.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Code requested although the session is paired | agent ran `connect` without checking | `connect` now calls `/user` first and prints `ALREADY CONNECTED -- device flow skipped` |
+| Paired, but next turn asks again | clone lived outside `/home/user` (e.g. `/tmp`, `/var/tmp`), so `secrets/` was wiped | clone to `/home/user/agent-bootstrap`; `setup.sh` now defaults there |
+| Approved in the browser, still asked again | the polling process was reaped when the agent's turn ended | the approval landed *after* the turn — resume with `device_pair.py poll 60` (code is valid ~15 min) |
+| Re-authorize every ~8 h | the refresh token was thrown away | `device_pair.py` now stores the full payload; refresh tokens are 181-day |
+| Two agents in one workspace kick each other out | refresh tokens are single-use | rotation is serialised with a lock, and a failed refresh no longer means "re-pair" if the stored token still works |
+| Never re-paired although the token died | `status` used to exit 0 whenever a token *file* existed | `status` now exits 0 only when a real API call returns 200, so `status \|\| connect` works |
+
+Diagnose in one command:
+
+```bash
+python3 gh_app.py status          # verdict: PAIRED  or  verdict: NOT WORKING
+python3 device_pair.py status     # a device code already waiting for approval?
+python3 selftest.py               # offline regression test for all of the above
+```
+
+---
+
 ## Security notes
 
 | Topic | Detail |
@@ -218,7 +255,8 @@ for cloning; `setup.sh` also works from raw URLs if you give it one.
 | Client ID | Public by design. Device flow needs no client secret for GitHub Apps. |
 | Device code | Short-lived (~15 min), single-use, and only becomes a token after human approval. |
 | Token at rest | `secrets/` with `chmod 600`, git-ignored. |
-| Refresh tokens | Rotate on use — never share one between machines. |
+| Refresh tokens | Rotate on use, single-use, 181-day life — never share one between machines. Rotation is serialised by a lock in `secrets/`. |
+| Re-authorization | `connect` will not issue a code while the stored token still authenticates; `--force` is the only way past it. |
 | Killing access | `python3 gh_app.py revoke`, or GitHub → Settings → Applications → `keshab-flutter-assistant` → *Revoke access*. Revoking also invalidates every token issued to that installation. |
 | Least privilege | If an agent only needs one repo, narrow the App's repository selection to that repo instead of "all". |
 
@@ -230,6 +268,8 @@ for cloning; `setup.sh` also works from raw URLs if you give it one.
 agent-bootstrap/
 ├── README.md              ← you are here; agents read this
 ├── gh_app.py              ← device flow + token manager + API client (stdlib only)
+├── device_pair.py         ← resumable device flow (survives an interrupted turn)
+├── selftest.py            ← offline test: never re-ask for authorization
 ├── app-meta.json          ← App, installation, endpoints, permissions, token policy
 ├── setup.sh               ← curl | bash one-shot installer
 ├── vault.py               ← optional passphrase-encrypted token store

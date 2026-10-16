@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Resumable device-flow helper.
 
-start : request a device code, save it to device_state.json, print the user code, exit.
-poll  : reuse the saved device code, poll until approved, then hand the
-        access token to gh_app.py so it is stored the normal way.
+start : request a device code, save it (secrets/device_state.json), print the
+        user code, exit.
+poll  : reuse the saved device code, poll until approved, then store the FULL
+        token payload (access + refresh) through gh_app.py.
+
+    python3 device_pair.py status          # is a code already pending?
+    python3 device_pair.py start           # get a code (refuses a duplicate)
+    python3 device_pair.py poll 60         # resume polling, 60s at a time
+    python3 device_pair.py poll --new 60   # discard the stale code, start + poll
 
 Why: background processes are reaped between agent turns in this sandbox, but a
 GitHub device code stays valid ~15 min. So we persist the device_code and can
@@ -11,18 +17,20 @@ resume polling in a later turn without issuing a new user code.
 """
 import json
 import os
-import subprocess
 import sys
 import time
 import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-STATE = os.path.join(HERE, "device_state.json")
 
 # pull the client id straight out of gh_app.py's own config so we never diverge
 sys.path.insert(0, HERE)
 import gh_app  # noqa: E402
+
+# The pending code goes in the secrets dir: gitignored (never committed) and,
+# unlike /tmp, it survives between agent turns.
+STATE = os.path.join(gh_app.SECRET_DIR, "device_state.json")
 
 CLIENT_ID = gh_app.CLIENT_ID
 DEVICE_URL = gh_app.DEVICE_URL
@@ -45,11 +53,25 @@ def _post(url, data):
 
 
 def start(scope="repo workflow read:user"):
+    # Never hand out a second code while an approved-but-unpolled one may exist.
+    # Poll first; a pending code that the human already approved is picked up there.
+    if os.path.exists(STATE):
+        try:
+            old = json.load(open(STATE))
+            left = old.get("expires_in", 900) - (time.time() - old.get("issued_at", 0))
+        except (OSError, ValueError):
+            left = 0
+        if left > 30:
+            print(f"a code is already pending: {old.get('user_code')} ({int(left)}s left)")
+            print("-> run: python3 device_pair.py poll 60    (or `poll --new` to replace it)")
+            return 6
+        os.remove(STATE)
     d = _post(DEVICE_URL, {"client_id": CLIENT_ID, "scope": scope})
     if "device_code" not in d:
         print("ERROR requesting device code:", d)
         return 1
     d["issued_at"] = time.time()
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
     with open(STATE, "w") as f:
         json.dump(d, f)
     os.chmod(STATE, 0o600)
@@ -83,13 +105,17 @@ def poll(budget=None):
         })
         tok = r.get("access_token")
         if tok:
-            print("APPROVED -- storing token via gh_app.py")
-            res = subprocess.run(
-                [sys.executable, os.path.join(HERE, "gh_app.py"), "connect", "--token", tok],
-                cwd=HERE, capture_output=True, text=True,
-            )
-            sys.stdout.write(res.stdout[-2000:])
-            sys.stderr.write(res.stderr[-2000:])
+            # Store access AND refresh token. Writing only the access token
+            # (the old `gh_app.py connect --token` shortcut) threw the
+            # refresh token away, so ~8 h later everything asked for a new
+            # device code again.
+            gh_app.store_tokens(r, "device_flow_resume")
+            exp = gh_app.token_expiry()
+            print("APPROVED -- token stored")
+            print(f"  token        : {gh_app.mask(tok)}")
+            print(f"  refresh token: {'yes' if r.get('refresh_token') else 'no (will need re-pair in ~8h)'}")
+            print(f"  expires      : {exp.strftime('%Y-%m-%d %H:%M UTC') if exp else 'unknown'}")
+            print(f"  stored at    : {gh_app.TOKEN_FILE}")
             try:
                 os.remove(STATE)
             except OSError:
@@ -109,8 +135,34 @@ def poll(budget=None):
 
 
 if __name__ == "__main__":
-    cmd = sys.argv[1] if len(sys.argv) > 1 else "poll"
+    argv = sys.argv[1:]
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__)
+        print("usage:")
+        print("  python3 device_pair.py start [--new]   # get a code, print it, exit")
+        print("  python3 device_pair.py poll [SECONDS]  # resume polling the saved code")
+        print("  python3 device_pair.py poll --new SECS # drop a stale code, start a fresh one")
+        print("  python3 device_pair.py status          # what is pending?")
+        sys.exit(0)
+    cmd = argv[0]
+    new = "--new" in argv
+    rest = [a for a in argv[1:] if a != "--new"]
+    if cmd == "status":
+        if not os.path.exists(STATE):
+            print("no pending device code")
+            sys.exit(0)
+        d = json.load(open(STATE))
+        left = d.get("expires_in", 900) - (time.time() - d.get("issued_at", 0))
+        print(f"pending code : {d.get('user_code')}")
+        print(f"expires in   : {int(left)}s" if left > 0 else "expired")
+        sys.exit(0)
+    if new and os.path.exists(STATE):
+        os.remove(STATE)
     if cmd == "start":
         sys.exit(start())
-    b = int(sys.argv[2]) if len(sys.argv) > 2 else None
+    if new:                                  # poll --new: fresh code, then poll it
+        rc = start()
+        if rc:
+            sys.exit(rc)
+    b = int(rest[0]) if rest else None
     sys.exit(poll(b))

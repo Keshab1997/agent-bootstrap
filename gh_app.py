@@ -8,7 +8,8 @@ ZERO SECRETS:      nothing sensitive is stored in this repo.
 Run this, read the 8-character code out to the human, they approve it in a
 browser, and you get a working GitHub API token. That's the whole flow.
 
-    python3 gh_app.py connect              # full flow: show code, poll, save
+    python3 gh_app.py connect              # safe: skips the flow if already paired
+    python3 gh_app.py connect --force      # force a new device code
     python3 gh_app.py connect --show-only  # just print the code, don't poll
     python3 gh_app.py status               # is the saved token still valid?
     python3 gh_app.py whoami
@@ -25,6 +26,7 @@ Never commit that path. (.gitignore here already blocks secrets/.)
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import subprocess
@@ -115,6 +117,32 @@ def _write_json(path: str, obj: dict) -> None:
         json.dump(obj, fh, indent=2, sort_keys=True)
 
 
+@contextlib.contextmanager
+def _secret_lock():
+    """Best-effort cross-process lock for token rotation.
+
+    GitHub App refresh tokens are single-use: two agents refreshing at the same
+    time burn each other's token and one of them ends up asking for a new device
+    code. Serialising rotation (and re-reading inside the lock) stops that.
+    """
+    os.makedirs(SECRET_DIR, exist_ok=True)
+    lock_path = os.path.join(SECRET_DIR, ".rotate.lock")
+    try:
+        import fcntl
+    except ImportError:                      # non-POSIX: just run without a lock
+        yield
+        return
+    fh = open(lock_path, "w")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
+
+
 def mask(tok: str | None, head: int = 6, tail: int = 4) -> str:
     if not tok:
         return "(none)"
@@ -198,6 +226,16 @@ def token_expiry(tok: str | None = None) -> datetime | None:
     return None
 
 
+def store_tokens(payload: dict, source: str = "device_flow") -> None:
+    """Public entry point: persist a full token payload (access + refresh).
+
+    Callers that obtained tokens themselves (e.g. device_pair.py) MUST use this
+    instead of writing only the access token: dropping the refresh_token is what
+    forces a fresh device flow every ~8 hours.
+    """
+    _store_tokens(payload, source)
+
+
 def _store_tokens(payload: dict, source: str) -> None:
     at = payload["access_token"]
     _write_secret(TOKEN_FILE, at)
@@ -239,6 +277,20 @@ def refresh(force: bool = False) -> tuple[bool, str]:
         left = (exp - datetime.now(timezone.utc)).total_seconds()
         if left > REFRESH_BUFFER_SECONDS:
             return True, f"token still valid ({left/3600:.1f}h left), no refresh needed"
+    elif exp is None and not force:
+        # expiry header missing is common - don't blindly refresh and burn the single-use refresh token
+        st, _ = _api("GET", "/user", token=tok)
+        if st == 200:
+            return True, "token valid (expiry header missing, API 200) - no refresh needed"
+
+    with _secret_lock():
+        return _refresh_locked(force, tok, ref)
+
+
+def _refresh_locked(force: bool, tok: str, ref: str) -> tuple[bool, str]:
+    # re-read inside the lock: another agent may have rotated while we waited
+    tok = _read(TOKEN_FILE) or tok
+    ref = _read(REFRESH_FILE) or ref
 
     st, p = _post_form(TOKEN_URL, {
         "client_id": CLIENT_ID,
@@ -246,6 +298,11 @@ def refresh(force: bool = False) -> tuple[bool, str]:
         "refresh_token": ref,
     })
     if "access_token" not in p:
+        # Do NOT tell the human to re-pair if the current token still works.
+        code, _u = _api("GET", "/user", token=tok)
+        if code == 200:
+            return True, ("refresh skipped (single-use token already rotated by this or "
+                          "another session) -- stored token is still valid")
         return False, (f"refresh failed (HTTP {st}): {p.get('error') or p.get('message')} "
                        f"-- run `connect` to re-pair")
     _store_tokens(p, "refresh")
@@ -327,6 +384,37 @@ def cmd_connect(args) -> int:
         _store_tokens({"access_token": args.token, "token_type": "bearer"}, "manual")
         say(f"token stored manually -> {TOKEN_FILE}")
         return 0
+
+    # GUARD: never ask the human for a new code when the stored token still works.
+    # (An agent that runs `connect` on every new session is the #1 cause of
+    #  "why is it asking me to authorize again?".)
+    if not args.force:
+        tok = _read(TOKEN_FILE)
+        if tok:
+            st, _u = _api("GET", "/user", token=tok)
+            if st == 200:
+                say("")
+                say("=" * 66)
+                say("  ALREADY CONNECTED -- device flow skipped")
+                say("=" * 66)
+                say(f"  token   : {mask(tok)}  (still valid, HTTP 200)")
+                say(f"  account : {ACCOUNT}   app: {APP_SLUG}")
+                say(f"  file    : {TOKEN_FILE}")
+                say("")
+                say("  To force a fresh pairing anyway:")
+                say("      python3 gh_app.py connect --force")
+                say("=" * 66)
+                return 0
+            elif st == 401:
+                say("  ! stored token rejected (HTTP 401) -- requesting a new code...")
+            else:
+                # transport error, rate limit, 5xx: a network blip must NOT cost
+                # the human a browser approval.
+                say("")
+                say(f"  ! could not confirm the token (HTTP {st or 'transport error'}) --")
+                say("    NOT starting a device flow. Retry `status` first.")
+                say("    Genuinely dead? python3 gh_app.py connect --force")
+                return 1
 
     d = start_device_flow(args.scope)
     print_code(d)
@@ -425,17 +513,24 @@ def cmd_status(_args) -> int:
             f"({left/3600:+.1f}h) [{'VALID' if left > 0 else 'EXPIRED'}]")
     elif tok:
         say("  expires         : unknown")
+    api_ok = False
     if tok:
         st, u = _api("GET", "/user", token=tok)
+        api_ok = st == 200
         say(f"  api check       : HTTP {st} -> "
-            + (f"{u.get('login')} ({u.get('name')})" if st == 200
+            + (f"{u.get('login')} ({u.get('name')})" if api_ok
                else str(u.get('message', u))[:120]))
+        if api_ok:
+            say("  verdict         : PAIRED -- do not run `connect` again")
+        else:
+            say("  verdict         : NOT WORKING -- `python3 gh_app.py connect` will re-pair")
     else:
         say("  api check       : skipped (no token)")
         say("")
         say("  -> run: python3 gh_app.py connect")
     say("=" * 66)
-    return 0 if tok else 1
+    # exit 0 only when a call actually authenticated: lets `status || connect` work
+    return 0 if api_ok else 1
 
 
 def cmd_whoami(_args) -> int:
@@ -541,6 +636,8 @@ def main() -> int:
     c.add_argument("--scope", default=DEFAULT_SCOPE)
     c.add_argument("--show-only", action="store_true",
                    help="print the code and exit without polling")
+    c.add_argument("--force", action="store_true",
+                   help="pair again even if the stored token is still valid")
     c.add_argument("--token", help="skip device flow, store this token directly")
     c.set_defaults(f=cmd_connect)
 

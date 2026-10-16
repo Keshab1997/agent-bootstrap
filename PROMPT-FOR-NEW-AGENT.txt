@@ -3,22 +3,40 @@
 Everything below is the whole onboarding. Read it once, then work. **Speed is
 the point**: never wait on CI, never run a check the change does not need.
 
-## 1. Pair with GitHub — once per session
+## 1. Pair with GitHub — once per session, and only if you are not already paired
 
 ```bash
-git clone https://github.com/Keshab1997/agent-bootstrap && cd agent-bootstrap
-python3 gh_app.py connect
+DST=/home/user/agent-bootstrap   # /home/user is the ONLY path that survives turns
+[ -f "$DST/gh_app.py" ] || git clone https://github.com/Keshab1997/agent-bootstrap "$DST"
+python3 "$DST/gh_app.py" connect   # safe to run: it skips itself if already paired
 ```
 
-1. It prints a code like `XXXX-XXXX`. **Show it to Keshab immediately and
-   prominently** — a headline, not fine print:
-   *"Open https://github.com/login/device and enter XXXX-XXXX"*.
-   He approves it in his browser; the script polls and finishes on its own.
-   Do not ask him for a token or a password — ever.
-2. Verify with `python3 gh_app.py whoami`. If `python3 gh_app.py status`
-   already reports `HTTP 200`, you are paired — skip this step.
-3. The token is at `secrets/gh_token.txt` (~8 h, auto-refreshes). Never print
-   it in full.
+**Read its output, then behave accordingly — this is the whole trick:**
+
+| What it printed | What you do |
+|---|---|
+| `ALREADY CONNECTED -- device flow skipped` | You are paired. Show nothing, ask nothing. Start working. |
+| A code like `XXXX-XXXX` | **Show it as a headline, not fine print:** *"Open https://github.com/login/device and enter XXXX-XXXX"*. He approves in his browser; the script polls and finishes on its own. Never ask him for a token or a password — ever. |
+
+- **Never re-pair "to be safe".** Asking him to authorize a session that is
+  already authorized is the #1 complaint about agents in this workspace.
+  The token is at `/home/user/agent-bootstrap/secrets/gh_token.txt` (~8 h,
+  auto-refreshes). Never print it in full. `connect --force` exists only for a
+  genuinely dead token.
+- **If his approval arrives after your turn ended** (the poll gets cut off),
+  the code is still valid ~15 min — do **not** mint a new one. Use the
+  resumable helper, which keeps the pending code in `secrets/device_state.json`:
+
+  ```bash
+  python3 /home/user/agent-bootstrap/device_pair.py start      # same code, saved
+  python3 /home/user/agent-bootstrap/device_pair.py poll 60    # resume in a later turn
+  ```
+
+  Repeat `poll 60` until it prints `APPROVED`; start a new code only if it says
+  `EXPIRED`. (`connect` alone cannot do this — its poll dies with the turn.)
+- Verify with `python3 "$DST/gh_app.py" status` → `verdict: PAIRED`
+  (exit code 0 = paired, 1 = not paired, so `status || connect` also works) or
+  `python3 "$DST/gh_app.py" whoami`.
 
 ## 2. Flutter SDK — only when Dart work is coming (~50 s; skip for docs/YAML)
 
@@ -87,7 +105,12 @@ log first**, then fix.
 - Exec-bit noise on `gradlew` / `*.jar` files → fixed by `core.fileMode false`.
 - `raw.githubusercontent.com` can serve a **stale file for ~5 minutes** after a
   push. Trust the API (`python3 gh_app.py api GET …`) or the local clone.
-- Token expired (`HTTP 401` from `status`)? Re-pair: one browser click for him.
+- **Cloned agent-bootstrap into the wrong place?** `git clone … && cd agent-bootstrap`
+  inside a fresh shell lands in `/var/tmp/...` — wiped between turns, so
+  `secrets/gh_token.txt` disappears and you look unpaired after every turn.
+  Always `/home/user/agent-bootstrap`, one clone per sandbox.
+- Token expired (`HTTP 401` from `status`)? Get a fresh code — but only after
+  checking `status` shows `NOT WORKING`, and show the code to him.
 
 ## 8. "Done" looks like
 

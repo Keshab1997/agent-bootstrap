@@ -7,7 +7,7 @@ between sessions — everything else is rebuilt in seconds from what is written 
 
 | Path | What | Remote |
 |---|---|---|
-| `~/agent-bootstrap` | GitHub connector (device flow). Token: `secrets/gh_token.txt` (chmod 600, ~8 h, auto-refresh; check: `python3 gh_app.py whoami`) | Keshab1997/agent-bootstrap |
+| `~/agent-bootstrap` | GitHub connector (device flow). Token: `secrets/gh_token.txt` (chmod 600, ~8 h, auto-refresh; check: `python3 gh_app.py status` → `verdict: PAIRED`). **Never re-pair while it says PAIRED** — `connect` self-skips; interrupted approval → `device_pair.py poll 60`. Test: `python3 selftest.py` | Keshab1997/agent-bootstrap |
 | `~/docify` | The app, full git clone, branch `main` | Keshab1997/docify |
 | `~/flutter-builder` | The agent-pack source, tag **v1.13.1** is the current release | Keshab1997/flutter-builder |
 | `~/.staging` | Kept logs (`analyze.log`, `test.log`) — delete freely | — |

@@ -51,33 +51,51 @@
   </header>
 
   <div class="card">
-    <h2>১) পুরো prompt <span class="meta">(4403 অক্ষর, 97 লাইন)</span></h2>
+    <h2>১) পুরো prompt <span class="meta">(5981 অক্ষর, 120 লাইন)</span></h2>
     <p class="sub">এটাই paste করার আসল জিনিস — pairing, Flutter SDK, check policy, CI-r নিয়ম, sandbox ফাঁদ — সব একসাথে।</p>
     <div class="row">
       <button class="copy" id="btnFull" data-label="📋 পুরো prompt copy করো">📋 পুরো prompt copy করো</button>
       <span class="meta">বাটনে ক্লিক → “✓ Copy হয়েছে” দেখলেই done</span>
     </div>
-    <textarea id="fullBox" readonly spellcheck="false"># You are joining Keshab1997's workspace. Move fast.
+    <textarea id="fullBox" readonly spellcheck="false"># You are joining Keshab1997&#x27;s workspace. Move fast.
 
 Everything below is the whole onboarding. Read it once, then work. **Speed is
 the point**: never wait on CI, never run a check the change does not need.
 
-## 1. Pair with GitHub — once per session
+## 1. Pair with GitHub — once per session, and only if you are not already paired
 
 ```bash
-git clone https://github.com/Keshab1997/agent-bootstrap &amp;&amp; cd agent-bootstrap
-python3 gh_app.py connect
+DST=/home/user/agent-bootstrap   # /home/user is the ONLY path that survives turns
+[ -f &quot;$DST/gh_app.py&quot; ] || git clone https://github.com/Keshab1997/agent-bootstrap &quot;$DST&quot;
+python3 &quot;$DST/gh_app.py&quot; connect   # safe to run: it skips itself if already paired
 ```
 
-1. It prints a code like `XXXX-XXXX`. **Show it to Keshab immediately and
-   prominently** — a headline, not fine print:
-   *"Open https://github.com/login/device and enter XXXX-XXXX"*.
-   He approves it in his browser; the script polls and finishes on its own.
-   Do not ask him for a token or a password — ever.
-2. Verify with `python3 gh_app.py whoami`. If `python3 gh_app.py status`
-   already reports `HTTP 200`, you are paired — skip this step.
-3. The token is at `secrets/gh_token.txt` (~8 h, auto-refreshes). Never print
-   it in full.
+**Read its output, then behave accordingly — this is the whole trick:**
+
+| What it printed | What you do |
+|---|---|
+| `ALREADY CONNECTED -- device flow skipped` | You are paired. Show nothing, ask nothing. Start working. |
+| A code like `XXXX-XXXX` | **Show it as a headline, not fine print:** *&quot;Open https://github.com/login/device and enter XXXX-XXXX&quot;*. He approves in his browser; the script polls and finishes on its own. Never ask him for a token or a password — ever. |
+
+- **Never re-pair &quot;to be safe&quot;.** Asking him to authorize a session that is
+  already authorized is the #1 complaint about agents in this workspace.
+  The token is at `/home/user/agent-bootstrap/secrets/gh_token.txt` (~8 h,
+  auto-refreshes). Never print it in full. `connect --force` exists only for a
+  genuinely dead token.
+- **If his approval arrives after your turn ended** (the poll gets cut off),
+  the code is still valid ~15 min — do **not** mint a new one. Use the
+  resumable helper, which keeps the pending code in `secrets/device_state.json`:
+
+  ```bash
+  python3 /home/user/agent-bootstrap/device_pair.py start      # same code, saved
+  python3 /home/user/agent-bootstrap/device_pair.py poll 60    # resume in a later turn
+  ```
+
+  Repeat `poll 60` until it prints `APPROVED`; start a new code only if it says
+  `EXPIRED`. (`connect` alone cannot do this — its poll dies with the turn.)
+- Verify with `python3 &quot;$DST/gh_app.py&quot; status` → `verdict: PAIRED`
+  (exit code 0 = paired, 1 = not paired, so `status || connect` also works) or
+  `python3 &quot;$DST/gh_app.py&quot; whoami`.
 
 ## 2. Flutter SDK — only when Dart work is coming (~50 s; skip for docs/YAML)
 
@@ -99,7 +117,7 @@ quizbaaz, prescription-scanner, AI-Image-Scan**.
 
 Clone `Keshab1997/&lt;repo&gt;`, then **read its `AGENTS.md` completely before
 editing**. The managed block already carries the policy in §4; the notes below
-that block are Keshab's own — never delete them.
+that block are Keshab&#x27;s own — never delete them.
 
 ## 4. The check policy — exactly this, nothing more
 
@@ -109,22 +127,22 @@ that block are Keshab's own — never delete them.
 | a Dart edit | `flutter test test/&lt;name&gt;_test.dart` — that one file |
 | shared surface / risky diff / Keshab asks | `flutter analyze` + full `flutter test` |
 
-- **Never** `flutter build apk|aab|web` or `gradlew` locally "just to check".
+- **Never** `flutter build apk|aab|web` or `gradlew` locally &quot;just to check&quot;.
 - **Never** rerun the full battery after a small edit. If a check takes
   minutes, it belongs to CI — push and move on.
 
-## 5. CI is manual — Keshab's button, not yours
+## 5. CI is manual — Keshab&#x27;s button, not yours
 
 Nothing runs on a push. Do **not** wait for a run after pushing your work.
 Push to `main` directly, commit often, batch freely. When a batch is done,
-tell him: *"batch ready — Actions → Flutter CI → Run workflow"*. Read the
+tell him: *&quot;batch ready — Actions → Flutter CI → Run workflow&quot;*. Read the
 result with `python3 tool/ci_watch.py`. If a run is red: **read the failing
 log first**, then fix.
 
 ## 6. Working rules
 
 - Push straight to `main` — no branches, no PRs.
-  `python3 tool/agent_loop.py -m "feat(scope): what changed"` = preflight +
+  `python3 tool/agent_loop.py -m &quot;feat(scope): what changed&quot;` = preflight +
   secret guard + commit + push, one call.
 - Conventional commits: `feat(update): …`, `fix(auth): …`, `chore(ci): …`.
 - Secrets never enter git (`*.jks`, `*.keystore`, `key.properties`,
@@ -134,21 +152,26 @@ log first**, then fix.
 
 ## 7. Sandbox traps — know them, skip the slow paths
 
-- A clone suddenly says *"not a git repository"* → `.git/config` was dropped
+- A clone suddenly says *&quot;not a git repository&quot;* → `.git/config` was dropped
   between turns. Reattach it (do **not** re-clone):
   ```bash
   git remote add origin https://github.com/Keshab1997/&lt;repo&gt;.git
   git config core.fileMode false
-  git config user.name "Keshab Sarkar"
-  git config user.email "Keshab1997@users.noreply.github.com"
-  git config credential.helper '!f(){ echo username=x-access-token; echo "password=$(cat /home/user/agent-bootstrap/secrets/gh_token.txt)"; }; f'
+  git config user.name &quot;Keshab Sarkar&quot;
+  git config user.email &quot;Keshab1997@users.noreply.github.com&quot;
+  git config credential.helper &#x27;!f(){ echo username=x-access-token; echo &quot;password=$(cat /home/user/agent-bootstrap/secrets/gh_token.txt)&quot;; }; f&#x27;
   ```
 - Exec-bit noise on `gradlew` / `*.jar` files → fixed by `core.fileMode false`.
 - `raw.githubusercontent.com` can serve a **stale file for ~5 minutes** after a
   push. Trust the API (`python3 gh_app.py api GET …`) or the local clone.
-- Token expired (`HTTP 401` from `status`)? Re-pair: one browser click for him.
+- **Cloned agent-bootstrap into the wrong place?** `git clone … &amp;&amp; cd agent-bootstrap`
+  inside a fresh shell lands in `/var/tmp/...` — wiped between turns, so
+  `secrets/gh_token.txt` disappears and you look unpaired after every turn.
+  Always `/home/user/agent-bootstrap`, one clone per sandbox.
+- Token expired (`HTTP 401` from `status`)? Get a fresh code — but only after
+  checking `status` shows `NOT WORKING`, and show the code to him.
 
-## 8. "Done" looks like
+## 8. &quot;Done&quot; looks like
 
 Small focused commits on `main`, local sha == remote sha; checks matched to
 the change (never the full battery by reflex); at most one CI run — dispatched
@@ -158,13 +181,16 @@ evidence, what you deliberately did not touch**.</textarea>
   </div>
 
   <div class="card">
-    <h2>২) সংক্ষিপ্ত version <span class="meta">(433 অক্ষর)</span></h2>
+    <h2>২) সংক্ষিপ্ত version <span class="meta">(523 অক্ষর)</span></h2>
     <p class="sub">চ্যাটে দ্রুত paste করার ছোট ভার্সন — agent নিজে থেকেই AGENTS.md পড়ে বাকিটা বুঝে নেবে।</p>
     <div class="row">
       <button class="copy small" id="btnShort" data-label="📋 সংক্ষিপ্তটা copy করো">📋 সংক্ষিপ্তটা copy করো</button>
     </div>
-    <textarea id="shortBox" readonly spellcheck="false">Clone Keshab1997/agent-bootstrap → `python3 gh_app.py connect` → show me the
-code → wait for my approval. Dart work শুরু করলে Flutter SDK (flutter-bootstrap,
+    <textarea id="shortBox" readonly spellcheck="false">(চ্যাটে দ্রুত paste করার জন্য)
+
+Clone Keshab1997/agent-bootstrap → **`/home/user/agent-bootstrap`** → আমারApproval
+দরকার হলে code দেখাও, নইলে `ALREADY CONNECTED` পেলে নতুন করে authorize চেয়ো না।
+Dart work শুরু করলে Flutter SDK (flutter-bootstrap,
 `/var/tmp/flutter`)। তারপর যে repo বলব তার `AGENTS.md` পড়ে সেটাই follow করো:
 সব change-এ `preflight.py`; Dart edit-এ শুধু সংশ্লিষ্ট test ফাইল; `analyze` +
 full test শুধু দরকারে বা আমি বললে। সরাসরি `main`-এ push করো, **কখনো CI-র জন্য
@@ -178,6 +204,7 @@ full test শুধু দরকারে বা আমি বললে। স�
       <li><b>Copy</b> চেপে Notepad-এ paste → save (যেমন <code>new-agent-prompt.txt</code>)।</li>
       <li>নতুন agent-কে prompt-টা paste করে দিন, সাথে যে repo-তে কাজ হবে তার নাম বলুন।</li>
       <li>Agent pairing code দেখাবে → আপনি https://github.com/login/device এ approve করবেন → তারপর সে নিজে থেকেই কাজ শুরু করবে।</li>
+      <li><b>আগে থেকে paired থাকলে</b> agent কোনো code দেখাবে না — সেটাই ঠিক। ও "ALREADY CONNECTED" পেলে আর authorize চাইবে না।</li>
       <li>সময় লাগে শুধু দুই জায়গায়: আপনার approval-এর অপেক্ষা, আর (Dart কাজ হলে) ৫০ সেকেন্ডের Flutter SDK। বাকি সব fast path-এ।</li>
     </ol>
     <div class="hint">💡 Preview-র sandbox কখনো clipboard আটকে দিলে: বাটন চাপলেই লেখাটা নিজে থেকে select হয়ে যাবে —

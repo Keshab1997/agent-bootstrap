@@ -64,11 +64,15 @@ flutter-bootstrap-এর setup.sh চালিয়ে নিজের sandbox-
 ## 🖥️ নিজে হাতে করতে চাইলে (terminal থেকে)
 
 ```bash
-git clone https://github.com/Keshab1997/agent-bootstrap.git
-cd agent-bootstrap
-python3 gh_app.py connect
-# → code টা বের হবে → browser-এ approve করুন
+git clone https://github.com/Keshab1997/agent-bootstrap.git /home/user/agent-bootstrap
+python3 /home/user/agent-bootstrap/gh_app.py connect
+# → আগে থেকেই connected থাকলে বলবে "ALREADY CONNECTED" — কিছু করার নেই
+# → নইলে code টা বের হবে → browser-এ approve করুন
 ```
+
+> **`/home/user/agent-bootstrap`** — এই path-টাই দিতে হবে। অন্য জায়গায় (যেমন
+> `/tmp`) clone করলে token পরের turn-এ মুছে যায়, আর agent বারবার authorize
+> চাইতে থাকে।
 
 অথবা এক লাইনে:
 
@@ -95,11 +99,12 @@ Flutter setup ব্যর্থ হলেও GitHub connection ঠিক থা
 দরকারি কমান্ড:
 
 ```bash
-python3 gh_app.py status          # connection ঠিক আছে কিনা
+python3 gh_app.py status          # "verdict: PAIRED" মানে ঠিক আছে (exit 0)
 python3 gh_app.py whoami          # কে login হলো
 python3 gh_app.py repos           # repo লিস্ট
 python3 gh_app.py api GET /user   # যেকোনো REST call
 python3 gh_app.py revoke          # connection বিচ্ছিন্ন
+python3 gh_app.py connect --force # জোর করে নতুন code (সাধারণত লাগবে না)
 ```
 
 কোনো `pip install` লাগবে না — শুধু python3 থাকলেই হবে।
@@ -120,6 +125,7 @@ python3 gh_app.py revoke          # connection বিচ্ছিন্ন
 | Device code | ১৫ মিনিট (approve না করলে নিজে থেকেই মরে যাবে, ক্ষতি নেই) |
 | Access token (`ghu_…`) | **৮ ঘণ্টা** — একটা কাজের session-এর জন্য যথেষ্ট |
 | Auto-refresh | ৮ ঘণ্টা শেষ হওয়ার আগে `gh_app.py` নিজে থেকে refresh করে নেয় |
+| একই session-এ আবার authorize | **কখনো লাগে না** — `connect` নিজেই চেক করে skip করে |
 | Refresh token | **১৮১ দিন** — এই সময়ের মধ্যে code ছাড়াই চলবে |
 | ১৮১ দিন পরে | আবার একবার device flow (৩ ক্লিক) |
 
@@ -136,6 +142,8 @@ python3 gh_app.py revoke          # connection বিচ্ছিন্ন
 | `expired_token` | code টা ১৫ মিনিট পার হয়ে গেছে — নতুন code নিন |
 | `access_denied` | browser-এ Cancel চেপে ফেলেছেন — আবার করুন |
 | Agent code দেখাচ্ছে না | উপরের paste-করা লাইনটাই হুবহু দিন |
+| approve করেছি, তবু আবার code চাইছে | turn শেষ হয়ে poll টা মরে গেছে। নতুন code না নিয়ে বলুন: `python3 device_pair.py poll 60` (code ১৫ মিনিট বাঁচে) |
+| প্রতি turn-এ আবার authorize | agent `/tmp`-এ clone করছে — বলুন `/home/user/agent-bootstrap` ব্যবহার করতে |
 | Agent repo clone করতে পারছে না | agent-কে বলুন raw URL ব্যবহার করতে: `https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/gh_app.py` |
 
 **সব কিছু একসাথে বন্ধ করতে:**

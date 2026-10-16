@@ -21,7 +21,17 @@ set -euo pipefail
 REPO="Keshab1997/agent-bootstrap"
 BRANCH="main"
 RAW="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
-DEST="${BOOTSTRAP_DIR:-$PWD/agent-bootstrap}"
+# Where to put the kit. Prefer the workspace root: in agent sandboxes only
+# /home/user survives between turns, so a clone in /tmp (or a random $PWD)
+# loses secrets/gh_token.txt and every later turn looks unpaired -- which is
+# what makes agents ask for authorization over and over.
+if [ -n "${BOOTSTRAP_DIR:-}" ]; then
+  DEST="$BOOTSTRAP_DIR"
+elif [ -d /home/user ] && [ -w /home/user ]; then
+  DEST="/home/user/agent-bootstrap"
+else
+  DEST="$PWD/agent-bootstrap"
+fi
 WITH_FLUTTER=0
 FLUTTER_SETUP_URL="https://raw.githubusercontent.com/Keshab1997/flutter-bootstrap/main/setup.sh"
 
@@ -88,14 +98,16 @@ elif command -v git >/dev/null 2>&1; then
     || { say "  git clone failed, falling back to raw download"
          fetch "$RAW/gh_app.py"     "$DEST/gh_app.py"
          fetch "$RAW/app-meta.json" "$DEST/app-meta.json"
-         fetch "$RAW/vault.py"      "$DEST/vault.py" 2>/dev/null || true; }
+         fetch "$RAW/vault.py"       "$DEST/vault.py" 2>/dev/null || true
+         fetch "$RAW/device_pair.py" "$DEST/device_pair.py" 2>/dev/null || true; }
 else
   fetch "$RAW/gh_app.py"     "$DEST/gh_app.py"
   fetch "$RAW/app-meta.json" "$DEST/app-meta.json"
-  fetch "$RAW/vault.py"      "$DEST/vault.py" 2>/dev/null || true
+  fetch "$RAW/vault.py"       "$DEST/vault.py" 2>/dev/null || true
+  fetch "$RAW/device_pair.py" "$DEST/device_pair.py" 2>/dev/null || true
   say "  downloaded raw files"
 fi
-chmod +x "$DEST/gh_app.py" 2>/dev/null || true
+chmod +x "$DEST/gh_app.py" "$DEST/device_pair.py" 2>/dev/null || true
 
 [ -f "$DEST/gh_app.py" ] || die "gh_app.py missing -- download failed"
 say "  files   : $(ls "$DEST" | tr '\n' ' ')"
@@ -117,7 +129,13 @@ step "starting the OAuth device flow"
 say ""
 say "  >>> A HUMAN MUST APPROVE THIS IN A BROWSER <<<"
 say ""
-( cd "$DEST" && python3 gh_app.py connect )
+( cd "$DEST" && python3 gh_app.py connect ) || {
+  say ""
+  say "  pairing was interrupted -- the code is still valid ~15 min."
+  say "  Resume it instead of asking for a new one:"
+  say "    python3 ${DEST}/device_pair.py poll 60"
+  exit 1
+}
 
 if [ "$WITH_FLUTTER" = 1 ]; then install_flutter || true; fi
 
