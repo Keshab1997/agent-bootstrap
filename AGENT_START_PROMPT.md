@@ -130,6 +130,16 @@ evidence, what you deliberately did not touch**.
 
 ---
 
+## Working with other agents — captain mode
+
+If Keshab hands you **`CAPTAIN_START_PROMPT.md`** instead of this file, you are the
+**captain**: you split the work into worker briefs, the workers push their own
+`agent/A|B|C/<slug>` branches, and you review, fix, merge and report. Your playbook
+is `captain/CAPTAIN_PROMPT.md` in this same clone; the brief template is
+`captain/WORKER_BRIEF_TEMPLATE.md`.
+
+---
+
 ## সংক্ষিপ্ত version (চ্যাটে দ্রুত paste করার জন্য)
 
 > Clone Keshab1997/agent-bootstrap → **`/home/user/agent-bootstrap`** → আমারApproval

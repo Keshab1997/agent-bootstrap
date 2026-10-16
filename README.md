@@ -68,6 +68,23 @@ You are expected to do the following. It is the whole job.
 
 ---
 
+## Multiple agents — one captain, three workers
+
+For work worth parallelising, hand the agent **`CAPTAIN_START_PROMPT.md`** instead:
+it pairs, then reads [`captain/CAPTAIN_PROMPT.md`](captain/CAPTAIN_PROMPT.md) from
+this clone. The captain splits the job into per-file worker briefs
+([`captain/WORKER_BRIEF_TEMPLATE.md`](captain/WORKER_BRIEF_TEMPLATE.md), worked
+examples in [`captain/examples/`](captain/examples/)), each worker pushes its own
+`agent/A|B|C/<slug>` branch, and the captain reviews → fixes → squash-merges →
+pushes `main`. Workers never touch `main`, and the captain never pushes a tag,
+release or secret. Bengali walk-through:
+[`captain/HOW_TO_START_BN.md`](captain/HOW_TO_START_BN.md).
+
+Because the playbook ships in this repository, the first paste stays ~10 lines
+instead of a whole prompt — and updating the playbook updates every future agent.
+
+---
+
 ## Starting a fresh agent — one paste
 
 When a new agent session starts, hand it [`AGENT_START_PROMPT.md`](AGENT_START_PROMPT.md):
@@ -274,6 +291,8 @@ agent-bootstrap/
 ├── setup.sh               ← curl | bash one-shot installer
 ├── vault.py               ← optional passphrase-encrypted token store
 ├── AGENT_START_PROMPT.md  ← hand this to a fresh agent session (one paste)
+├── CAPTAIN_START_PROMPT.md ← same, for the captain of a multi-agent batch
+├── captain/               ← the multi-agent playbook (briefs, examples, BN guide)
 ├── PROMPT-FOR-NEW-AGENT.txt ← same prompt as plain text
 ├── AGENT_PROMPT_COPY.html ← same prompt with a one-click copy button
 ├── RESUME.md              ← workspace resume guide (paths, traps, policies)
