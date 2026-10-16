@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-#!/usr/bin/env python3
 """Regression test: "why is it asking me to authorize again?"
 
 Runs fully offline -- every GitHub call is stubbed, no token, no network. It
@@ -18,7 +17,29 @@ import os
 import sys
 import tempfile
 
-SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gh_app.py")
+def _find_gh_app() -> str:
+    """Locate gh_app.py: env override, next to this file, the usual clone, else download."""
+    env = os.environ.get("GH_APP_PY")
+    if env and os.path.exists(env):
+        return env
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(here, "gh_app.py"),
+        "/home/user/agent-bootstrap/gh_app.py",
+        os.path.join(os.getcwd(), "gh_app.py"),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    import urllib.request                     # piped from curl: fetch a copy
+    dest = os.path.join(tempfile.mkdtemp(), "gh_app.py")
+    url = "https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/gh_app.py"
+    with urllib.request.urlopen(url, timeout=30) as r, open(dest, "wb") as fh:
+        fh.write(r.read())
+    return dest
+
+
+SRC = _find_gh_app()
 
 tmp = tempfile.mkdtemp()
 os.environ["GH_SECRET_DIR"] = tmp
