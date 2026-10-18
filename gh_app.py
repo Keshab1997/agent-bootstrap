@@ -10,8 +10,8 @@ browser, and you get a working GitHub API token. That's the whole flow.
 
     python3 gh_app.py connect              # safe: skips the flow if already paired
     python3 gh_app.py connect --force      # force a new device code
-    python3 gh_app.py connect --show-only  # just print the code, don't poll
-    python3 gh_app.py status               # is the saved token still valid?
+    python3 gh_app.py connect --show-only  # save/reuse a code; poll in a later turn
+    python3 gh_app.py status               # check/refresh the saved session; no device flow
     python3 gh_app.py whoami
     python3 gh_app.py repos [--limit 20]
     python3 gh_app.py api GET /user/repos
@@ -28,14 +28,17 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import math
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+from typing import NamedTuple
 
 # --------------------------------------------------------------------------- #
 # App metadata -- read from app-meta.json when present, else use these values. #
@@ -73,6 +76,7 @@ SECRET_DIR = os.environ.get("GH_SECRET_DIR") or os.path.join(HERE, "secrets")
 TOKEN_FILE = os.environ.get("GITHUB_TOKEN_FILE") or os.path.join(SECRET_DIR, "gh_token.txt")
 REFRESH_FILE = os.environ.get("GITHUB_REFRESH_TOKEN_FILE") or os.path.join(SECRET_DIR, "gh_refresh_token.txt")
 STATE_FILE = os.path.join(SECRET_DIR, "gh_state.json")
+DEVICE_STATE_FILE = os.path.join(SECRET_DIR, "device_state.json")
 
 UA = "gh_app.py (agent-bootstrap)"
 REFRESH_BUFFER_SECONDS = 300
@@ -104,43 +108,39 @@ def _read(path: str) -> str | None:
 
 
 def _write_secret(path: str, value: str) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        fh.write(value + "\n")
+    # Replace atomically: an interrupted turn must not leave half a token/state.
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".pending-", dir=directory)
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(value + "\n")
+        os.replace(tmp, path)                 # mkstemp also guarantees mode 0600
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
 
 
 def _write_json(path: str, obj: dict) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        json.dump(obj, fh, indent=2, sort_keys=True)
+    _write_secret(path, json.dumps(obj, indent=2, sort_keys=True))
 
 
 @contextlib.contextmanager
-def _secret_lock():
-    """Best-effort cross-process lock for token rotation.
-
-    GitHub App refresh tokens are single-use: two agents refreshing at the same
-    time burn each other's token and one of them ends up asking for a new device
-    code. Serialising rotation (and re-reading inside the lock) stops that.
-    """
+def _secret_lock(name: str = ".rotate.lock", blocking: bool = True):
+    """Serialise rotation / pending-code updates within one secrets directory."""
     os.makedirs(SECRET_DIR, exist_ok=True)
-    lock_path = os.path.join(SECRET_DIR, ".rotate.lock")
     try:
         import fcntl
-    except ImportError:                      # non-POSIX: just run without a lock
+    except ImportError:                      # non-POSIX: best effort only
         yield
         return
-    fh = open(lock_path, "w")
-    try:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
-        yield
-    finally:
+    with open(os.path.join(SECRET_DIR, name), "w") as fh:
+        flags = fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB)
+        fcntl.flock(fh.fileno(), flags)
         try:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            yield
         finally:
-            fh.close()
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
 def mask(tok: str | None, head: int = 6, tail: int = 4) -> str:
@@ -233,7 +233,8 @@ def store_tokens(payload: dict, source: str = "device_flow") -> None:
     instead of writing only the access token: dropping the refresh_token is what
     forces a fresh device flow every ~8 hours.
     """
-    _store_tokens(payload, source)
+    with _secret_lock():
+        _store_tokens(payload, source)
 
 
 def _store_tokens(payload: dict, source: str) -> None:
@@ -241,6 +242,9 @@ def _store_tokens(payload: dict, source: str) -> None:
     _write_secret(TOKEN_FILE, at)
     if payload.get("refresh_token"):
         _write_secret(REFRESH_FILE, payload["refresh_token"])
+    elif os.path.exists(REFRESH_FILE):
+        # A manual PAT / different login must not inherit another login's refresh.
+        os.remove(REFRESH_FILE)
     _write_json(STATE_FILE, {
         "connected_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": source,
@@ -259,56 +263,100 @@ def _store_tokens(payload: dict, source: str) -> None:
     })
 
 
-def refresh(force: bool = False) -> tuple[bool, str]:
-    """Rotate the access token with the refresh token.
+class RefreshResult(NamedTuple):
+    ok: bool
+    message: str
+    needs_pairing: bool = False
 
-    NOTE: GitHub App refresh tokens are single-use -- using one invalidates it.
-    That is why a refresh token must never be shared between machines/agents.
-    """
+
+def refresh(force: bool = False) -> tuple[bool, str]:
+    """Refresh if needed; retain the public (ok, message) return contract."""
+    result = _refresh_result(force)
+    return result.ok, result.message
+
+
+def _refresh_result(force: bool = False) -> RefreshResult:
     tok = _read(TOKEN_FILE)
     ref = _read(REFRESH_FILE)
-    if not tok:
-        return False, "no access token stored -- run `connect`"
     if not ref:
-        return False, "no refresh token stored -- run `connect` when it expires"
+        return RefreshResult(False, "no refresh token stored -- run `connect` if needed", True)
 
-    exp = token_expiry(tok)
+    exp = token_expiry(tok) if tok and not force else None
     if exp and not force:
         left = (exp - datetime.now(timezone.utc)).total_seconds()
         if left > REFRESH_BUFFER_SECONDS:
-            return True, f"token still valid ({left/3600:.1f}h left), no refresh needed"
-    elif exp is None and not force:
-        # expiry header missing is common - don't blindly refresh and burn the single-use refresh token
+            return RefreshResult(True, f"token still valid ({left/3600:.1f}h left), no refresh needed")
+    elif tok and not force:
+        # Missing expiry is not evidence of expiry. Do not rotate on a network blip.
         st, _ = _api("GET", "/user", token=tok)
         if st == 200:
-            return True, "token valid (expiry header missing, API 200) - no refresh needed"
+            return RefreshResult(True, "token valid (expiry header missing, API 200) -- no refresh needed")
+        if st != 401:
+            return RefreshResult(False, f"token check unavailable (HTTP {st}); retry later, do not re-pair")
 
     with _secret_lock():
-        return _refresh_locked(force, tok, ref)
+        return _refresh_locked(tok, ref)
 
 
-def _refresh_locked(force: bool, tok: str, ref: str) -> tuple[bool, str]:
-    # re-read inside the lock: another agent may have rotated while we waited
-    tok = _read(TOKEN_FILE) or tok
-    ref = _read(REFRESH_FILE) or ref
+def _refresh_locked(observed_token: str | None, observed_refresh: str) -> RefreshResult:
+    # Re-check the winner after acquiring the lock, not just re-read and rotate
+    # its brand-new single-use refresh token a second time.
+    tok = _read(TOKEN_FILE)
+    ref = _read(REFRESH_FILE)
+    if (tok, ref) != (observed_token, observed_refresh):
+        st, _ = _api("GET", "/user", token=tok) if tok else (401, {})
+        if st == 200:
+            return RefreshResult(True, "another process restored the token -- no refresh needed")
+        if st != 401:
+            return RefreshResult(False, "token changed; could not verify it -- retry later, do not re-pair")
+    if not ref:
+        return RefreshResult(False, "no refresh token stored -- run `connect` if needed", True)
 
-    st, p = _post_form(TOKEN_URL, {
+    st, payload = _post_form(TOKEN_URL, {
         "client_id": CLIENT_ID,
         "grant_type": "refresh_token",
         "refresh_token": ref,
     })
-    if "access_token" not in p:
-        # Do NOT tell the human to re-pair if the current token still works.
-        code, _u = _api("GET", "/user", token=tok)
-        if code == 200:
-            return True, ("refresh skipped (single-use token already rotated by this or "
-                          "another session) -- stored token is still valid")
-        return False, (f"refresh failed (HTTP {st}): {p.get('error') or p.get('message')} "
-                       f"-- run `connect` to re-pair")
-    _store_tokens(p, "refresh")
-    new_exp = token_expiry()
-    return True, (f"refreshed OK -> {mask(p['access_token'])}"
-                  + (f", expires {new_exp.strftime('%H:%M UTC')}" if new_exp else ""))
+    if payload.get("access_token"):
+        _store_tokens(payload, "refresh")
+        return RefreshResult(True, "saved session refreshed -- no browser approval needed")
+
+    # A failed proactive refresh does not invalidate an access token that works.
+    code, _ = _api("GET", "/user", token=tok) if tok else (401, {})
+    if code == 200:
+        return RefreshResult(True, "refresh unavailable, but the stored token still works")
+    error = payload.get("error", "unknown_error")
+    # Only a definite credential rejection justifies another human approval.
+    # Transport / rate-limit / server / app-configuration errors do not.
+    rejected = (code == 401 and st in (200, 400, 401)
+                and error in ("bad_refresh_token", "invalid_grant"))
+    advice = "run `connect` to re-pair" if rejected else "retry later, do not re-pair"
+    return RefreshResult(False, f"refresh failed (HTTP {st}, {error}) -- {advice}", rejected)
+
+
+def connection_status() -> tuple[int, dict, bool, str]:
+    """Check, then recover an expired/missing access token. Never opens a flow.
+
+    Returns HTTP status, user, whether pairing is necessary, and a safe message.
+    connect and status share this path so neither mistakes expiry for logout.
+    """
+    tok = _read(TOKEN_FILE)
+    st, user = _api("GET", "/user", token=tok) if tok else (401, {})
+    if st == 200:
+        return st, user, False, ""
+    if st != 401:
+        return st, user, False, "could not verify the saved session -- retry later, do not re-pair"
+    if not _read(REFRESH_FILE):
+        return st, user, True, "no usable saved session or refresh token"
+
+    result = _refresh_result(force=True)       # access token was actually rejected
+    if not result.ok:
+        return st, user, result.needs_pairing, result.message
+    tok = _read(TOKEN_FILE)
+    st, user = _api("GET", "/user", token=tok) if tok else (401, {})
+    # A successful refresh followed by an inconclusive check is not a reason
+    # to immediately request yet another login.
+    return st, user, False, result.message
 
 
 def get_token(auto_refresh: bool = True) -> str:
@@ -317,7 +365,7 @@ def get_token(auto_refresh: bool = True) -> str:
         raise SystemExit(
             "ERROR: no token stored.\n"
             "  run:  python3 gh_app.py connect\n"
-            "  then tell the human the XXXX-XXXX code and wait for them to approve it.")
+            "  it restores the saved session first; show a code only if one is printed.")
     if auto_refresh:
         ok, msg = refresh()
         if not ok:
@@ -331,12 +379,74 @@ def get_token(auto_refresh: bool = True) -> str:
 # --------------------------------------------------------------------------- #
 def start_device_flow(scope: str = DEFAULT_SCOPE) -> dict:
     st, d = _post_form(DEVICE_URL, {"client_id": CLIENT_ID, "scope": scope})
-    if "device_code" not in d:
+    if not d.get("device_code") or not d.get("user_code"):
         raise SystemExit(
-            f"ERROR: could not get a device code (HTTP {st}): {json.dumps(d)[:300]}\n"
-            f"  Check that client_id={CLIENT_ID} is a GitHub App with "
-            f"'Device Flow' enabled in its settings.")
+            f"ERROR: could not get a device code (HTTP {st}, {d.get('error', 'unknown_error')}).\n"
+            f"  Check that client_id={CLIENT_ID} has Device Flow enabled.")
     return d
+
+
+def load_device_state() -> dict | None:
+    try:
+        with open(DEVICE_STATE_FILE) as fh:
+            d = json.load(fh)
+        if (not isinstance(d, dict)
+                or not isinstance(d.get("device_code"), str) or not d["device_code"]
+                or not isinstance(d.get("user_code"), str) or not d["user_code"]
+                or not isinstance(d.get("issued_at"), (int, float))
+                or not isinstance(d.get("expires_in"), (int, float))
+                or not isinstance(d.get("interval", 5), (int, float))
+                or not isinstance(d.get("next_poll_at", 0), (int, float))):
+            raise ValueError("invalid state")
+        numbers = (d["issued_at"], d["expires_in"], d.get("interval", 5), d.get("next_poll_at", 0))
+        if not all(math.isfinite(value) and value >= 0 for value in numbers):
+            raise ValueError("invalid lifetime")
+    except FileNotFoundError:
+        return None
+    except (ValueError, TypeError, OverflowError):
+        raise SystemExit("ERROR: pending device state is invalid; use `connect --force` to replace it.") from None
+    if d.get("client_id", CLIENT_ID) != CLIENT_ID:
+        raise SystemExit("ERROR: pending code belongs to another app; use `connect --force` to replace it.")
+    return d
+
+
+def device_seconds_left(d: dict) -> float:
+    return max(0, d["issued_at"] + d["expires_in"] - time.time())
+
+
+def get_device_flow(scope: str = DEFAULT_SCOPE, force: bool = False) -> dict:
+    with _secret_lock(".device.lock"):
+        d = None if force else load_device_state()
+        if d and device_seconds_left(d) > 0:
+            say("Resuming the saved device code -- no new approval request.")
+            return d
+        d = start_device_flow(scope)
+        d.update(issued_at=time.time(), client_id=CLIENT_ID)
+        d.setdefault("expires_in", 900)
+        d.setdefault("interval", 5)
+        # Save BEFORE printing: the same code survives show-only, interruption,
+        # and a switch from connect to device_pair.py in the following turn.
+        _write_json(DEVICE_STATE_FILE, d)
+        return d
+
+
+def clear_device_state(d: dict | None = None) -> None:
+    with _secret_lock(".device.lock"):
+        if not os.path.exists(DEVICE_STATE_FILE):
+            return
+        if d is not None:
+            current = load_device_state()
+            if not current or current["device_code"] != d["device_code"]:
+                return                      # never delete a newer forced flow
+        os.remove(DEVICE_STATE_FILE)
+
+
+def _save_device_progress(d: dict) -> None:
+    with _secret_lock(".device.lock"):
+        current = load_device_state()
+        if not current or current["device_code"] != d["device_code"]:
+            raise SystemExit("Device flow changed; check `status` or resume `connect`.")
+        _write_json(DEVICE_STATE_FILE, d)
 
 
 def print_code(d: dict) -> None:
@@ -346,99 +456,109 @@ def print_code(d: dict) -> None:
     say("=" * 66)
     say(f"  1. Open     : {d.get('verification_uri', VERIFICATION_URI)}")
     say(f"  2. Enter    : {d['user_code']}")
-    say(f"  3. Click    : Continue -> Authorize")
+    say("  3. Click    : Continue -> Authorize")
     say(f"  Account     : {ACCOUNT}   App: {APP_SLUG}")
-    say(f"  Code expires: {d['expires_in']}s ({d['expires_in']//60} min)")
+    say(f"  Code expires: {int(device_seconds_left(d))}s remaining")
+    say("  Resume      : python3 device_pair.py poll 60")
     say("=" * 66)
     say("")
 
 
-def poll(d: dict) -> dict:
-    interval = d.get("interval", 5)
-    deadline = time.time() + d["expires_in"] + 10
-    say(f"[{_now()}] polling for approval ...")
+def poll(d: dict, budget: float | None = None) -> dict | None:
+    """Poll one SAVED flow. On success persist both tokens, then clear its state.
+
+    None means only the caller's time budget ended; the code remains resumable.
+    The original issued_at and GitHub's poll interval survive every restart.
+    """
+    try:
+        with _secret_lock(".device-poll.lock", blocking=False):
+            return _poll_device(d, budget)
+    except BlockingIOError:
+        raise SystemExit("Approval is already being polled in this workspace; wait for that process.") from None
+
+
+def _poll_device(d: dict, budget: float | None) -> dict | None:
+    left = device_seconds_left(d)
+    if left <= 0:
+        clear_device_state(d)
+        raise SystemExit("ERROR: device code EXPIRED -- run `connect` for a new code.")
+    deadline = time.time() + (left if budget is None else min(max(0, budget), left))
+    interval = max(d.get("interval", 5), 5)
+    say(f"[{_now()}] polling for approval (code {d['user_code']}) ...")
     while time.time() < deadline:
-        st, p = _post_form(TOKEN_URL, {
+        wait = d.get("next_poll_at", 0) - time.time()
+        if wait > 0:
+            time.sleep(min(wait, max(0, deadline - time.time())))
+            continue
+        # Save the next allowed poll before the HTTP request, even if this
+        # process is interrupted while waiting for the response.
+        d["next_poll_at"] = time.time() + interval
+        _save_device_progress(d)
+        st, payload = _post_form(TOKEN_URL, {
             "client_id": CLIENT_ID,
             "device_code": d["device_code"],
             "grant_type": DEVICE_GRANT,
         })
-        if "access_token" in p:
-            return p
-        err = p.get("error", "")
-        if err == "slow_down":
-            interval += 5
-        elif err in ("expired_token", "access_denied", "incorrect_device_code",
-                     "incorrect_client_credentials", "unsupported_grant_type"):
-            raise SystemExit(f"ERROR: {err} (HTTP {st}) -- start over with `connect`")
-        else:
-            print(f"\r[{_now()}] waiting ({err or 'pending'}) -- retry in {interval}s   ",
-                  end="", flush=True)
-        time.sleep(interval)
-    raise SystemExit("\nERROR: timed out -- nobody approved the code in time.")
+        if payload.get("access_token"):
+            with _secret_lock(".device.lock"):
+                current = load_device_state()
+                if not current or current["device_code"] != d["device_code"]:
+                    raise SystemExit("Device flow was replaced; resume the current saved flow.")
+                store_tokens(payload, "device_flow")
+                os.remove(DEVICE_STATE_FILE)  # only after BOTH tokens were saved
+            return payload
+        error = payload.get("error", "")
+        if error == "slow_down":
+            interval = max(interval + 5, payload.get("interval", 0))
+        elif error in ("expired_token", "access_denied", "incorrect_device_code"):
+            clear_device_state(d)
+            raise SystemExit(f"ERROR: {error} (HTTP {st}) -- run `connect` when ready to pair.")
+        elif error in ("incorrect_client_credentials", "unsupported_grant_type"):
+            raise SystemExit(f"ERROR: {error} -- check app configuration; do not request another code.")
+        elif st == 0:
+            interval = max(interval, min(interval * 2, 60))  # never undo GitHub's slow_down
+        d.update(interval=interval, next_poll_at=time.time() + interval)
+        _save_device_progress(d)
+        say(f"  waiting ({error or 'pending'}) -- retry in {interval}s")
+    if device_seconds_left(d) <= 0:
+        clear_device_state(d)
+        raise SystemExit("ERROR: device code EXPIRED -- run `connect` for a new code.")
+    return None
 
 
 def cmd_connect(args) -> int:
     if args.token:
-        _write_secret(TOKEN_FILE, args.token)
-        _store_tokens({"access_token": args.token, "token_type": "bearer"}, "manual")
+        store_tokens({"access_token": args.token, "token_type": "bearer"}, "manual")
+        clear_device_state()
         say(f"token stored manually -> {TOKEN_FILE}")
         return 0
 
-    # GUARD: never ask the human for a new code when the stored token still works.
-    # (An agent that runs `connect` on every new session is the #1 cause of
-    #  "why is it asking me to authorize again?".)
     if not args.force:
-        tok = _read(TOKEN_FILE)
-        if tok:
-            st, _u = _api("GET", "/user", token=tok)
-            if st == 200:
-                say("")
-                say("=" * 66)
-                say("  ALREADY CONNECTED -- device flow skipped")
-                say("=" * 66)
-                say(f"  token   : {mask(tok)}  (still valid, HTTP 200)")
-                say(f"  account : {ACCOUNT}   app: {APP_SLUG}")
-                say(f"  file    : {TOKEN_FILE}")
-                say("")
-                say("  To force a fresh pairing anyway:")
-                say("      python3 gh_app.py connect --force")
-                say("=" * 66)
-                return 0
-            elif st == 401:
-                say("  ! stored token rejected (HTTP 401) -- requesting a new code...")
-            else:
-                # transport error, rate limit, 5xx: a network blip must NOT cost
-                # the human a browser approval.
-                say("")
-                say(f"  ! could not confirm the token (HTTP {st or 'transport error'}) --")
-                say("    NOT starting a device flow. Retry `status` first.")
-                say("    Genuinely dead? python3 gh_app.py connect --force")
-                return 1
+        st, _user, needs_pairing, message = connection_status()
+        if message:
+            say(f"  {message}")
+        if st == 200:
+            say("ALREADY CONNECTED -- device flow skipped")
+            say(f"  account : {ACCOUNT}   app: {APP_SLUG}")
+            return 0
+        if not needs_pairing:
+            say(f"  NOT starting a device flow (HTTP {st}). Retry `connect` later.")
+            return 1
 
-    d = start_device_flow(args.scope)
+    d = get_device_flow(args.scope, force=args.force)
     print_code(d)
     if args.show_only:
-        say("--show-only: polling skipped. This device code will simply expire")
-        say(f"in {d['expires_in']//60} minutes. Re-run `connect` for the real flow.")
+        say("Code saved. Resume with `python3 device_pair.py poll 60` or `python3 gh_app.py connect`.")
         return 0
 
-    p = poll(d)
-    _store_tokens(p, "device_flow")
+    payload = poll(d)
     exp = token_expiry()
     say("")
-    say("=" * 66)
-    say("  CONNECTED")
-    say("=" * 66)
-    say(f"  token        : {mask(p['access_token'])}  ({p['access_token'][:4]}…)")
-    say(f"  type         : {p.get('token_type', 'bearer')}")
-    say(f"  scope field  : '{p.get('scope', '')}'  (empty is normal for GitHub Apps)")
+    say("CONNECTED -- tokens saved; pending device code cleared")
+    say(f"  token        : {mask(payload['access_token'])}")
     say(f"  expires      : {exp.strftime('%Y-%m-%d %H:%M UTC') if exp else 'unknown'}")
-    say(f"  refresh token: {'yes' if p.get('refresh_token') else 'no'}")
+    say(f"  refresh token: {'yes' if payload.get('refresh_token') else 'no'}")
     say(f"  stored at    : {TOKEN_FILE}")
-    say("=" * 66)
-    say("")
-    say("  verify with:  python3 gh_app.py whoami")
     return 0
 
 
@@ -496,9 +616,10 @@ def cmd_installation_token(args) -> int:
 # read commands
 # --------------------------------------------------------------------------- #
 def cmd_status(_args) -> int:
+    st, user, needs_pairing, message = connection_status()
     tok = _read(TOKEN_FILE)
     say("=" * 66)
-    say("  connection status")
+    say("  connection status (refresh-first; never starts a device flow)")
     say("=" * 66)
     say(f"  app / client_id : {APP_SLUG} / {CLIENT_ID}")
     say(f"  account         : {ACCOUNT}")
@@ -506,31 +627,21 @@ def cmd_status(_args) -> int:
     say(f"  token file      : {TOKEN_FILE} {'[present]' if tok else '[MISSING]'}")
     say(f"  token           : {mask(tok)}")
     say(f"  refresh token   : {'present' if _read(REFRESH_FILE) else 'none'}")
-    exp = token_expiry() if tok else None
+    if message:
+        say(f"  recovery        : {message}")
+    exp = token_expiry(tok) if tok else None
     if exp:
-        left = (exp - datetime.now(timezone.utc)).total_seconds()
-        say(f"  expires         : {exp.strftime('%Y-%m-%d %H:%M UTC')} "
-            f"({left/3600:+.1f}h) [{'VALID' if left > 0 else 'EXPIRED'}]")
-    elif tok:
-        say("  expires         : unknown")
-    api_ok = False
-    if tok:
-        st, u = _api("GET", "/user", token=tok)
-        api_ok = st == 200
-        say(f"  api check       : HTTP {st} -> "
-            + (f"{u.get('login')} ({u.get('name')})" if api_ok
-               else str(u.get('message', u))[:120]))
-        if api_ok:
-            say("  verdict         : PAIRED -- do not run `connect` again")
-        else:
-            say("  verdict         : NOT WORKING -- `python3 gh_app.py connect` will re-pair")
+        say(f"  expires         : {exp.strftime('%Y-%m-%d %H:%M UTC')}")
+    if st == 200:
+        say(f"  api check       : HTTP 200 -> {user.get('login')} ({user.get('name')})")
+        say("  verdict         : PAIRED -- no browser approval needed")
+    elif needs_pairing:
+        say("  verdict         : NOT PAIRED -- run `python3 gh_app.py connect`")
     else:
-        say("  api check       : skipped (no token)")
-        say("")
-        say("  -> run: python3 gh_app.py connect")
+        say(f"  api check       : HTTP {st or 'transport error'}")
+        say("  verdict         : UNCONFIRMED -- retry later; do not re-pair")
     say("=" * 66)
-    # exit 0 only when a call actually authenticated: lets `status || connect` work
-    return 0 if api_ok else 1
+    return 0 if st == 200 else 1
 
 
 def cmd_whoami(_args) -> int:
@@ -635,7 +746,7 @@ def main() -> int:
     c = sub.add_parser("connect", help="pair via device flow (shows a code)")
     c.add_argument("--scope", default=DEFAULT_SCOPE)
     c.add_argument("--show-only", action="store_true",
-                   help="print the code and exit without polling")
+                   help="save/reuse the pending code and exit; resume with device_pair.py poll")
     c.add_argument("--force", action="store_true",
                    help="pair again even if the stored token is still valid")
     c.add_argument("--token", help="skip device flow, store this token directly")
@@ -673,4 +784,4 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except KeyboardInterrupt:
-        raise SystemExit("\ninterrupted.")
+        raise SystemExit("\nInterrupted -- pending code saved; resume with `python3 device_pair.py poll 60`.")

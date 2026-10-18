@@ -10,8 +10,8 @@
 # What it does:
 #   1. checks python3 + network to api.github.com
 #   2. fetches gh_app.py + app-meta.json (clone if git is available, else raw)
-#   3. starts the OAuth device flow and prints the 8-character user code
-#   4. polls until the human approves, then stores the token in ./secrets/
+#   3. reuses/refreshes a saved session, otherwise saves/reuses a device code
+#   4. polls only when needed, storing both access and refresh tokens in secrets/
 #   5. with --with-flutter: also installs the Flutter SDK via flutter-bootstrap
 #
 # Nothing in this script or repo is a secret. No credentials are downloaded.
@@ -112,28 +112,18 @@ chmod +x "$DEST/gh_app.py" "$DEST/device_pair.py" 2>/dev/null || true
 [ -f "$DEST/gh_app.py" ] || die "gh_app.py missing -- download failed"
 say "  files   : $(ls "$DEST" | tr '\n' ' ')"
 
-# --- 3. already connected? -------------------------------------------------
-step "checking for an existing token"
-if ( cd "$DEST" && python3 gh_app.py status >/dev/null 2>&1 ); then
-  ( cd "$DEST" && python3 gh_app.py status )
-  say ""
-  say "Already connected -- nothing to do."
-  say "  whoami : python3 ${DEST}/gh_app.py whoami"
-  if [ "$WITH_FLUTTER" = 1 ]; then install_flutter || true; fi
-  exit 0
-fi
-say "  no valid token found, pairing required"
-
-# --- 4. device flow --------------------------------------------------------
-step "starting the OAuth device flow"
-say ""
-say "  >>> A HUMAN MUST APPROVE THIS IN A BROWSER <<<"
-say ""
+# --- 3. restore before requesting approval ---------------------------------
+step "restoring GitHub access (saved token -> refresh -> saved device code)"
+# connect owns all decisions: never announce that a human must approve before
+# it has tried refresh/reuse. A network error must not create a new device code.
 ( cd "$DEST" && python3 gh_app.py connect ) || {
   say ""
-  say "  pairing was interrupted -- the code is still valid ~15 min."
-  say "  Resume it instead of asking for a new one:"
-  say "    python3 ${DEST}/device_pair.py poll 60"
+  if [ -f "${GH_SECRET_DIR:-$DEST/secrets}/device_state.json" ]; then
+    say "  A pending code is saved. Resume it instead of requesting another:"
+    say "    python3 ${DEST}/device_pair.py poll 60"
+  else
+    say "  Access could not be restored. Read the error above; retry connect later."
+  fi
   exit 1
 }
 
