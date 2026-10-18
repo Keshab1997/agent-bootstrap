@@ -27,9 +27,8 @@ curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/set
 
 ## For AI agents — read this first
 
-These steps are for a captain or standalone agent that needs authenticated
-access. **Public-repo patch workers skip pairing** and follow their no-login
-brief instead.
+Each captain, standalone agent or branch-pushing worker restores its own saved
+session. Reuse the same workspaces across batches; do not share credentials.
 
 1. **Run** `python3 gh_app.py connect`. It first reuses a working token, then
    tries the saved refresh token if access expired. Successful recovery prints
@@ -80,25 +79,21 @@ No new PAT, private key, server or repository setting is needed for this update.
 
 ---
 
-## Multiple agents — only the captain logs in by default
+## Multiple agents — reusable workspaces, direct branch pushes
 
 Start with [`CAPTAIN_START_PROMPT.md`](CAPTAIN_START_PROMPT.md). The captain
 restores access and reads [`captain/CAPTAIN_PROMPT.md`](captain/CAPTAIN_PROMPT.md).
-For a **verified public repo**, workers receive a frozen-base
-[`patch brief`](captain/WORKER_PATCH_BRIEF_TEMPLATE.md), clone without login,
-work on local branches and return `.patch` files plus checksums. **No worker
-OAuth approval or push.** Keshab attaches the actual files/reports to the
-captain's chat; the captain reviews → checks → integrates → pushes `main`.
-A path in another chat's sandbox is not a usable attachment.
+It fills [`worker briefs`](captain/WORKER_BRIEF_TEMPLATE.md), assigning disjoint
+files and unique `agent/A|B|C/<slug>` branches. Workers push those branches;
+the captain fetches → reviews → checks → integrates → pushes `main`.
+**Keshab does not download or upload files between chats.**
 
-Private repos or unsuitable attachment handoffs can use explicit authenticated
-[branch mode](captain/WORKER_BRIEF_TEMPLATE.md), with a separate worker pairing
-if needed. The captain explains that tradeoff first. No source is made public
-and no credentials are shared to avoid approval. An entirely new captain
-workspace still requires its first approval; this is not cross-sandbox SSO.
+Reuse the same captain and A/B/C worker chats/workspaces. Each keeps its own
+saved access/refresh token. A genuinely new workspace needs its first approval;
+revoked, lost or expired refresh credentials can also require re-approval.
+This is not cross-sandbox SSO, and credentials are never copied between agents.
 
 Bengali walk-through: [`captain/HOW_TO_START_BN.md`](captain/HOW_TO_START_BN.md).
-The playbook ships in the repo, so future fresh clones receive the updated rules.
 
 ---
 
@@ -222,7 +217,7 @@ use [`vault.py`](vault.py), it can store a **Fine-Grained PAT** encrypted. This
 is **not** a zero-secret login: each fresh workspace still needs the passphrase
 through a secure secret-delivery mechanism. Do not put that passphrase in a
 public repo, a worker brief or chat logs. This is not required for refresh/resume
-or the public-repo patch workflow.
+or the branch-push workflow.
 
 Example for a separately managed vault:
 
@@ -276,7 +271,7 @@ recover without another approval while its refresh token remains usable.
 | Re-running the starter requests a second code | A live pending code is reused, including its original expiry and retry interval |
 | GitHub / network / rate limit is temporarily failing | No new pairing; retry later (`UNCONFIRMED` is not logout) |
 | Two processes try to refresh the same workspace | The second verifies the winner under the lock instead of rotating it again |
-| A worker asks for authorization on a public repo | Use the captain's default **patch brief**, not the opt-in branch/push brief |
+| A new worker needs authorization | Its first write-access approval is expected; reuse that worker workspace for later batches |
 | An entirely new captain workspace asks for approval | Expected: no saved credentials are present; never copy another agent's refresh token |
 | Token or refresh was revoked, or refresh expired | One fresh device approval is necessary |
 
@@ -285,6 +280,15 @@ python3 gh_app.py status          # checks/recoveries only; never opens a flow
 python3 device_pair.py status     # pending code, original remaining lifetime
 python3 selftest.py               # offline auth regressions; only fake credentials
 ```
+
+### Can an authenticator's six-digit GitHub code replace the device code?
+
+No. The authenticator code is a second factor for signing into the GitHub
+account. The device code (`XXXX-XXXX`) identifies this agent's pending app
+access request. GitHub still requires the app authorization before issuing its
+API token; a TOTP code is neither an API token nor a substitute device code.
+Enter an authenticator code on GitHub's own sign-in page only when requested,
+not in agent chat. Do not share an authenticator seed or recovery codes.
 
 ---
 
@@ -315,7 +319,7 @@ agent-bootstrap/
 ├── vault.py               ← optional passphrase-encrypted token store
 ├── AGENT_START_PROMPT.md  ← hand this to a fresh agent session (one paste)
 ├── CAPTAIN_START_PROMPT.md ← same, for the captain of a multi-agent batch
-├── captain/               ← patch-first playbook, no-login/branch briefs, examples, BN guide
+├── captain/               ← branch-push playbook, worker briefs, examples, BN guide
 ├── PROMPT-FOR-NEW-AGENT.txt ← same prompt as plain text
 ├── AGENT_PROMPT_COPY.html ← same prompt with a one-click copy button
 ├── RESUME.md              ← workspace resume guide (paths, traps, policies)

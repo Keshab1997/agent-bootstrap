@@ -52,20 +52,26 @@ python3 /home/user/agent-bootstrap/device_pair.py poll 60
 `TIMEOUT for this turn` মানে ৬০ সেকেন্ডের অপেক্ষা শেষ, code শেষ নয়। একই command
 আবার চলবে। সত্যিই `EXPIRED` হলে `gh_app.py connect` নতুন code নিতে পারে।
 
-## Public repo-র workers: কোনো login নয়
+## Workers: একই চ্যাট ব্যবহার, সরাসরি branch push
 
-Captain-এর default **patch brief** পেলে worker:
+Captain A/B/C-কে brief দেবে। সম্ভব হলে প্রত্যেক worker-এর একই চ্যাট/workspace
+বারবার ব্যবহার করুন। প্রথমবার approval লাগতে পারে; পরের batch-এ saved login
+ও refresh reuse হবে।
 
-- public repo clone করে নিজের local branch-এ কাজ করবে;
-- একটিমাত্র নির্ধারিত check চালিয়ে `.patch` ফাইল ও report দেবে;
-- GitHub authorize চাইবে না, branch push-ও করবে না।
+Worker নিজের `agent/A|B|C/...` branch push করবে। Captain-কে শুধু বলুন
+**“A/B/C push করেছে, fetch করে দেখে নাও”**। কোনো ফাইল download/upload লাগবে না।
+Captain diff পড়ে, check করে, `main`-এ merge/push করবে।
 
-**ওই patch ফাইলটি report-সহ Captain চ্যাটে attach করুন।** অন্য চ্যাটের local
-file-path Captain নিজে পড়তে পারে না। Captain diff দেখে, check করে, `main`-এ push করবে।
+Private repo-তেও worker-এর নিজস্ব অনুমোদিত access ব্যবহার হবে। Token কখনো
+এক agent থেকে অন্যজনকে কপি হবে না। নতুন workspace বা revoked/lost credentials
+হলে আবার approval লাগতে পারে।
 
-এতে একই Captain workspace-এ তিন worker-এর জন্য তিনটি অতিরিক্ত approval বাদ যায়।
-Private repo বা patch handoff না চললে Captain আগে জানিয়ে branch/push mode বেছে নেবে;
-সে ক্ষেত্রে worker-এর নিজের pairing লাগতে পারে। Token কখনো share হবে না।
+## Authenticator-এর GitHub code দিলে কি হবে?
+
+ওই ৬-digit code account login-এর **2FA**। Agent যে `XXXX-XXXX` device code
+দেখায়, সেটি আলাদা app-access request। একটির জায়গায় অন্যটি ব্যবহার করা যায়
+না; authenticator code API token-ও নয়। GitHub login পেজে 2FA চাইলে সেখানে
+দেবেন—agent chat-এ code, authenticator seed বা recovery code পাঠাবেন না।
 
 ## পুরোনো clone থাকলে একবার update
 
@@ -102,7 +108,7 @@ python3 selftest.py                    # fake token দিয়ে offline regr
 | Refresh token | সাধারণত ১৮১ দিনের মেয়াদ; ব্যবহারে rotate হয়, নতুনটি সেভ হয় |
 | একই workspace-এর পরের turn | সেভ করা session/pending code reuse হয় |
 | একদম নতুন Captain workspace | পুরোনো credential নেই — প্রথম approval এখনও দরকার |
-| Public-repo patch worker | GitHub login লাগে না |
+| একই worker workspace-এর পরের batch | saved login/refresh reuse; branch push দিয়ে handoff |
 | Revoked/expired refresh বা হারানো credential | আবার approval লাগতে পারে |
 
 **শুধু public repo দিয়ে সব নতুন workspace-কে গোপনে write access দেওয়া নিরাপদ নয়।**

@@ -1,7 +1,3 @@
-> **Authenticated branch-mode example (explicit opt-in).** Public repos default
-> to `WORKER_PATCH_example.md`: no worker login or push. Do not hand out this
-> branch-mode brief without explaining the possible extra approval to Keshab.
-
 # EXAMPLE BRIEF — Agent A (Dart edit, single test file)
 #
 # Batch 1 on Keshab1997/docify. Splits by FILE, so A/B/C can run in parallel
@@ -9,7 +5,7 @@
 
 # You are agent A. One task, one branch, then you stop.
 
-You work in your own sandbox. Nobody else is watching this chat. Do the task
+Reuse your own worker workspace and saved login when available. Do the task
 below, push your branch, report in the format at the end. Do not ask Keshab
 questions — if something is unclear or too big, stop and say so in your report.
 
@@ -34,14 +30,17 @@ with a widget test that renders it at that size and proves it.
 
 ```bash
 cd /home/user
-[ -d docify ] || git clone https://github.com/Keshab1997/docify.git /home/user/docify
+[ -d docify ] || GIT_TERMINAL_PROMPT=0 git -c credential.helper='!f(){ echo username=x-access-token; echo "password=$(cat /home/user/agent-bootstrap/secrets/gh_token.txt)"; }; f' clone https://github.com/Keshab1997/docify.git /home/user/docify
 cd /home/user/docify
 git config core.fileMode false
 git config user.name "Keshab Sarkar"
 git config user.email "Keshab1997@users.noreply.github.com"
 git config credential.helper '!f(){ echo username=x-access-token; echo "password=$(cat /home/user/agent-bootstrap/secrets/gh_token.txt)"; }; f'
-git fetch origin && git checkout -B agent/A/home-overflow origin/main
+git fetch origin && git checkout -b agent/A/home-overflow origin/main
 ```
+
+If the local branch already exists, inspect and resume it; never reset
+uncommitted or unpushed work.
 
 **Files you own (only these):**
 
@@ -77,7 +76,9 @@ Run **only** that one test file. Not the full suite, not `flutter analyze`, not
 Then:
 
 ```bash
-git add -A
+git add -- lib/screens/home_screen.dart test/home_screen_test.dart
+git diff --cached --check
+git diff --cached
 git commit -m "fix(home): fit the home screen in a 360px viewport"
 git push -u origin agent/A/home-overflow
 ```

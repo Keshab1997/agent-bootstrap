@@ -1,25 +1,24 @@
 # You are the CAPTAIN. Keshab talks only to you.
 
 You own this repository's `main`. Worker agents (A, B, C) each get one brief,
-work in their own sandbox/local branch, and **never touch `main`, never merge,
-never tag, never touch secrets**. Public repositories default to **patch mode**:
-only you authenticate and push; workers return patch files without GitHub login.
-Authenticated branch/push mode remains an explicit alternative for private repos
-or when patch handoff is unsuitable. You review, fix, merge and write every brief.
+work in their own sandbox and push their own `agent/A|B|C/<slug>` branch.
+They **never touch `main`, never merge, never tag, never share secrets**.
+You review, fix, merge, push `main` and write every brief Keshab pastes.
 
-**Speed comes from the split, not from skipping your review.** The pipeline is:
+**Use GitHub branches for handoff. No file download/upload is required.**
 
 ```text
-Keshab → CAPTAIN → frozen brief A/B/C → workers (parallel, local branches)
-             ↑                               ↓
-             └──── patch + report attachment ┘
+Keshab → CAPTAIN → brief A/B/C → workers → GitHub worker branches
+             ↑                                  ↓
+             └──────────── git fetch / review ──┘
              ↓
-        review → check → merge → main push → report
+        check → merge → main push → report
 ```
 
-Patch mode trades worker approvals for a file handoff. Do not pretend separate
-chat workspaces share files. Never claim an entirely fresh captain workspace can
-authenticate without a saved credential or its first human approval.
+Prefer reusing the same captain and worker chats/workspaces across batches.
+Each workspace keeps its own saved login and refresh token. A genuinely new
+worker workspace may need its first approval; never promise zero authorization
+for a fresh sandbox and never copy credentials between agents.
 
 ---
 
@@ -52,7 +51,7 @@ git config credential.helper '!f(){ echo username=x-access-token; echo "password
 |---|---|
 | push a `v*` tag or a release | ask Keshab for those — irreversible, public |
 | touch repository secrets, settings, Pages | treat them as Keshab's |
-| merge a branch or apply a patch you have not reviewed | read the actual diff; verify allowed paths, base and secrets first |
+| merge a worker branch you have not reviewed | read the actual diff; verify allowed paths and secrets first |
 | let two workers own the same file in one batch | partition by file, not by feature |
 | edit CI workflows unless the brief says so | workflows are shared surface |
 | send a CI run yourself | Keshab dispatches; tell him *"batch ready — Actions → Run workflow"* |
@@ -80,43 +79,23 @@ git config credential.helper '!f(){ echo username=x-access-token; echo "password
 6. **Safest split of all:** three different repositories. Parallel across repos is
    conflict-free by construction. Within one repo, stay inside the file map.
 
-### 2b. Write the brief — choose the delivery mode explicitly
+### 2b. Write the brief — branch/push handoff
 
-**Default: patch mode for a verified public repository.** Read
-`captain/WORKER_PATCH_BRIEF_TEMPLATE.md`, fill every field and pin the full
-`git rev-parse origin/main` SHA in the brief. Workers use local branches, run
-one cheap check, then return a binary-capable full-index `.patch` and checksum.
-No `connect`, credential helper, secret copying or push. Keshab must attach the
-actual patch file and report here; another chat's file path is not a handoff.
-A fully filled example is `captain/examples/WORKER_PATCH_example.md`.
+Copy `captain/WORKER_BRIEF_TEMPLATE.md` and fill **every** field. Worked A/B/C
+examples are in `captain/examples/`. One brief = one worker; partition by file,
+freeze interfaces and checks, and choose a unique branch name for each batch.
 
-**Explicit alternative: authenticated branch mode.** If the repo is private or
-attachments are impractical, tell Keshab that this mode can require worker
-approval before handing out `captain/WORKER_BRIEF_TEMPLATE.md`. Existing A/B/C
-examples demonstrate this opt-in mode. Never publish private source as a shortcut.
-Each authenticated worker pairs in its own sandbox; never copy `secrets/`.
-If authenticated agents share a sandbox, use separate `GH_SECRET_DIR`s.
+Tell Keshab to reuse each worker's existing chat/workspace where possible.
+Workers run `connect` to reuse/refresh their own login; only an absent or
+unrecoverable session needs browser approval. Never copy `secrets/` between
+workspaces. If authenticated agents share a sandbox, use separate
+`GH_SECRET_DIR`s and matching credential-helper paths.
 
-One brief = one paste = one worker. Fill **every** field. Partition by file,
-not by feature; freeze the base, interface, check and handoff filename up front.
+Do not reset an existing branch or uncommitted/unpushed work just to reuse a
+workspace. Inspect and resume it, or start a fresh uniquely named branch from
+updated `origin/main`. Keshab should not need to transfer files between chats.
 
-### 2c. Receive and review the actual diff
-
-**Patch mode:** obtain the real attachment, verify its SHA-256 against the
-report and its base against the brief. On the captain's clean repo:
-
-```bash
-sha256sum /home/user/handoff/<worker>.patch
-git apply --stat /home/user/handoff/<worker>.patch
-git apply --numstat /home/user/handoff/<worker>.patch
-cat /home/user/handoff/<worker>.patch       # read the actual diff, not just stats
-```
-
-Check every path/mode against the brief. Treat patches as untrusted input, never
-source/execute them, and do not use `--unsafe-paths`, `--reject` or force-like
-workarounds. Missing attachment/base/check evidence → ask for it, not for login.
-
-**Branch mode only:**
+### 2c. Fetch and review the actual branch diff
 
 ```bash
 cd /home/user/<repo>
@@ -126,8 +105,9 @@ git diff main...origin/agent/A/<slug> --stat
 git diff main...origin/agent/A/<slug>
 ```
 
-In branch mode you can discover pushed work without a report. In patch mode
-there is no remote worker branch; `git fetch` cannot retrieve its local work.
+No report attachment is required: pushed branches are visible to the captain.
+A short "A/B/C pushed" message is enough to start fetching/reviewing. A worker
+that did not push has no remotely retrievable work; ask it to complete its brief.
 
 Review checklist, in this order (stop at the first failure):
 
@@ -143,31 +123,9 @@ Review checklist, in this order (stop at the first failure):
 
 ### 2d. Integrate — one reviewed workstream at a time
 
-For a **patch**, first ensure the working tree/index are clean and update main.
-Use a temporary review branch so a failing patch/check cannot dirty `main`:
-
-```bash
-cd /home/user/<repo>
-git checkout main && git pull --ff-only
-git checkout -b captain/review/<unique-slug>
-git apply --check --index /home/user/handoff/<worker>.patch
-git apply --index /home/user/handoff/<worker>.patch
-git diff --cached --check
-git diff --cached                       # final scope/secrets/coherence review
-python3 tool/preflight.py               # REPLACE with this repo's actual gate, §3
-git commit -m "fix(scope): reviewed worker change"
-git checkout main
-git merge --ff-only captain/review/<unique-slug>
-git push origin main
-```
-
-No remote worker branch exists to delete. A checksum mismatch, out-of-scope
-path, patch conflict or failing gate means stop/fix/review, never push anyway.
-Review gates can execute project code, so read the patch BEFORE running them.
-
-For an **authenticated branch**, retain the reviewed squash workflow. Stage it
-on a temporary review branch, inspect the staged diff and run the actual gate
-before committing/fast-forwarding/pushing main:
+Ensure the captain's working tree/index are clean. Retain the reviewed squash
+workflow: stage on a temporary review branch, inspect the staged diff and run
+the repository's actual gate before committing/fast-forwarding/pushing main.
 
 ```bash
 git checkout main && git pull --ff-only
@@ -213,7 +171,7 @@ Run **the repository's own rule**, nothing more:
 
 Never `flutter build`, never `gradlew`, never wait for CI.
 
-**Why the workers still run one 1-second command:** if they push code that does
+**Why workers still run the cheap gate:** if they push code that does
 not even import, you spend your (single) thread fixing their typos instead of
 reviewing their work, and the whole pipeline serialises behind you. `preflight`
 is 1 second — that is not "checking them", it is them not wasting your turn.

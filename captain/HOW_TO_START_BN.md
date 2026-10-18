@@ -1,24 +1,25 @@
-# 🚀 Captain শুরু করুন — workers-এর জন্য browser approval নয়
+# 🚀 Captain শুরু করুন — file handoff নয়, সরাসরি branch push
 
-> **এক লাইন:** Captain prompt → কাজ বলুন → workers-কে brief → তাদের patch
-> ফাইল Captain-কে attach → Captain review করে publish করবে।
+> **এক লাইন:** Captain prompt → কাজ বলুন → workers-কে brief → তারা branch push
+> করবে → Captain নিজেই fetch/review/merge করবে।
 
-Public repo-র default workflow-তে শুধু Captain-এর GitHub access লাগে। একই
-Captain workspace ব্যবহার চালিয়ে গেলে saved token/refresh reuse হয়। একদম
-নতুন workspace-এ প্রথম approval এখনও দরকার হতে পারে।
+সম্ভব হলে একই Captain এবং A/B/C worker chats/workspaces ব্যবহার চালিয়ে যান।
+প্রতিটির saved login/refresh সেখানেই থাকবে। আলাদা নতুন workspace-এ প্রথম
+approval লাগতে পারে; শুধু chat-এর নাম এক রাখলে credentials স্থানান্তর হয় না।
 
 ## ১. Captain চ্যাট
 
-Root-এর [`CAPTAIN_START_PROMPT.md`](../CAPTAIN_START_PROMPT.md) পুরোটা নতুন
-agent chat-এ paste করুন। সে repo clone করে playbook নিজে পড়বে।
+Root-এর [`CAPTAIN_START_PROMPT.md`](../CAPTAIN_START_PROMPT.md) দিন। সে repo
+clone করে playbook পড়বে এবং saved GitHub session restore করবে।
 
 - `ALREADY CONNECTED` বললে কিছুই করতে হবে না।
 - Access token expire হলে আগে saved refresh চেষ্টা করবে।
 - সত্যিই code দেখালেই https://github.com/login/device-এ approve করুন।
 - Turn শেষ হলে নতুন code নয়: `python3 device_pair.py poll 60` দিয়ে একইটি resume।
-- Network error হলে retry; approval বাড়িয়ে ওই সমস্যা ঠিক হয় না।
+- Network error হলে retry; নতুন approval ওই সমস্যা ঠিক করবে না।
 
-শেষে সে বলবে: **Captain ready — কাজ বলো।**
+শেষে সে বলবে: **Captain ready — কাজ বলো।** এই চ্যাটে ইতিমধ্যে setup থাকলে
+সোজা কাজের কথাই বলুন, আবার starter paste করার দরকার নেই।
 
 ## ২. কাজ বলুন
 
@@ -28,83 +29,60 @@ agent chat-এ paste করুন। সে repo clone করে playbook নি
 Batch 1 বানাও:
 1) docify — home screen 360px ফোনে overflow ঠিক করতে হবে
 2) quizbaaz — results screen-এ tap feedback চাই
-3) flutter-builder — README-র বাংলা অংশে একটা বানান ভুল আছে
+3) flutter-builder — README-র বাংলা অংশে বানান ঠিক করতে হবে
 
-Repo-গুলো public কিনা যাচাই করে no-login patch briefs দাও। Private হলে আগে জানাও।
+A/B/C-র branch-push briefs দাও; আগের worker chats-গুলোতেই কাজ দেব।
 ```
 
-Captain প্রতিটি brief-এ নির্দিষ্ট base commit, goal, allowed files, exact
-interface, check ও patch filename ভরে দেবে। এক ফাইল দুই worker পাবে না।
+Captain goal, allowed files, exact interface, cheap check এবং আলাদা branch
+name ভরে দেবে। এক ফাইল দুই worker পাবে না। ছোট কাজ হলে Captain নিজেই করতে পারে।
 
-## ৩. Worker চ্যাট
+## ৩. Worker চ্যাটগুলো
 
-A/B/C brief-গুলো আলাদা নতুন chat-এ দিন। **Patch brief-এ worker authorize চাইবে
-না এবং push করবে না।** সে public source clone করে local branch-এ কাজ করবে,
-নির্ধারিত check চালাবে, শেষে একটি `.patch` ফাইল ও report দেবে।
+A/B/C brief-গুলো সংশ্লিষ্ট worker chat-এ দিন। Worker নিজের saved login restore
+করবে। একেবারে নতুন worker হলে প্রথমবার code approve করতে হতে পারে।
 
-Report-এর ধরন:
+কাজ ও check শেষে worker নিজের `agent/A|B|C/...` branch push করবে—`main` নয়।
+Existing branch বা অসমাপ্ত কাজ overwrite/reset করবে না। শেষে report দেবে:
 
 ```text
 AGENT A DONE
-mode: patch (no GitHub authorization)
-repo: Keshab1997/docify
-base: <brief-এ থাকা পূর্ণ SHA>
-branch: agent/A/home-overflow (local only)
-sha: <worker-এর local commit SHA>
-patch: A-home-overflow.patch
-sha256: <ফাইলের আসল checksum>
-files: lib/screens/home_screen.dart, test/home_screen_test.dart
-check: flutter test test/home_screen_test.dart → <আসল ফল>
-changed: <আসল পরিবর্তন>
-not touched: theme, pubspec, workflows
-blocked: none
+branch: agent/A/home-overflow
+sha: <আসল commit SHA>
+files: <আসল পরিবর্তিত ফাইল>
+check: <নির্ধারিত check এবং আসল ফল>
+changed: <পরিবর্তনের সারাংশ>
+not touched: <বাদ রাখা অংশ>
+blocked: <none বা আসল সমস্যা>
 ```
 
-এটি শুধু report-এর উদাহরণ, কোনো test pass হওয়ার দাবি নয়। Worker আসল ফল লিখবে।
-
-## ৪. Captain-কে patch দিন
-
-Worker-এর `.patch` ফাইল download করে **Captain চ্যাটে attach করুন**, report-টিও
-paste করুন। A/B/C যতজন শেষ করেছে তাদেরগুলো একসঙ্গে দেওয়া যায়।
-
-**শুধু `/home/user/handoff/...` path paste করলে হবে না**—আলাদা sandbox-এর file
-Captain দেখতে পায় না। Patch mode-এ remote branch-ও নেই; `git fetch` দিয়ে ওই
-কাজ পাওয়া যাবে না। এই একবার file handoff-ই worker authorization-এর বিকল্প।
-
-## ৫. Review, check, publish
-
-Captain checksum/base/path/scope/secrets যাচাই করে **আসল diff পড়বে**। তারপর
-আলাদা review branch-এ patch apply, নির্ধারিত check, commit এবং `main`-এ publish।
-Conflict হলে আন্দাজে বা force দিয়ে apply করবে না।
-
-তার report:
+## ৪. Captain-কে শুধু জানান
 
 ```text
-Batch 1: A merged (<sha7>), B merged (<sha7>), C pending — <কারণ>
-Changed: <প্রতি workstream-এর সংক্ষিপ্ত পরিবর্তন>
-Evidence: <আসল test/check ফল>
-Not touched: <secrets/settings/workflows ইত্যাদি>
-Next: <পরের কাজ বা সিদ্ধান্ত>
+A/B/C push করেছে — fetch করে diff দেখে merge করো।
 ```
 
-Tag/release/secret/settings/workflow বদলাতে হলে আগে আপনার অনুমতি লাগবে।
+চাইলে workers-এর report-ও paste করতে পারেন; **কোনো ফাইল download বা attach
+করতে হবে না**। Captain পরিচিত branch names ধরে GitHub থেকে কাজগুলো আনবে।
+Push না হলে শুধু worker-এর local workspace থেকে Captain কাজ পাবে না; worker-কে
+নিজের branch push শেষ করতে হবে।
 
-## Private repo বা attachment নিয়ে সমস্যা হলে
+## ৫. Review ও publish
 
-Captain আগে জানিয়ে **branch mode** নিতে পারে। তখন worker-এর নিজের pairing
-লাগবে, সে `agent/A|B|C/...` branch push করবে, Captain `git fetch` করে review করবে।
-পুরোনো `WORKER_BRIEF_TEMPLATE.md` এবং A/B/C branch examples এই mode-এর জন্য রাখা আছে।
+Captain actual diff পড়বে, scope/secrets যাচাই করবে, review branch-এ নির্ধারিত
+check চালাবে, তারপর `main`-এ integrate/push করে পাঁচ লাইনের report দেবে।
+কোনো tag/release/secret/settings/workflow বদলানোর আগে অনুমতি নেবে।
 
-কখনো Captain-এর token/refresh token worker-কে কপি করবেন না, source-কে public
-করবেন না, public repo-তে credential রেখে approval বাদ দেওয়ার চেষ্টা করবেন না।
+## Authorization সম্পর্কে পরিষ্কার কথা
 
-## কোন ফাইল কোথায়
+- একই workspace-এ valid saved refresh থাকলে সাধারণ access-token expiry-তে
+  browser খুলতে হবে না। একেবারে নতুন workspace বা revoked/lost credentials
+  হলে আবার approval লাগতে পারে।
+- Authenticator app-এর ৬-digit GitHub code হলো account login-এর **2FA**;
+  agent-এর `XXXX-XXXX` device code হলো app-access request। একটির বদলে অন্যটি
+  চলে না। GitHub-এর নিজের login পেজে চাইলে শুধু সেখানেই 2FA code দিন।
+- Token, refresh token, authenticator seed বা recovery codes chat/brief-এ দেবেন
+  না। এক agent-এর credentials আরেকজনকে কপি করবেন না।
 
-- প্রথম paste: `CAPTAIN_START_PROMPT.md`
-- Captain-এর playbook: `captain/CAPTAIN_PROMPT.md`
-- Default brief: `captain/WORKER_PATCH_BRIEF_TEMPLATE.md`
-- ভরা patch example: `captain/examples/WORKER_PATCH_example.md`
-- Auth troubleshooting: `NEXT_TIME_BANGLA.md`
-
-নতুন server, PAT, private key বা repository setting লাগবে না। শুধু বর্তমান
-bootstrap code ও playbook ব্যবহার করলেই এই workflow পাওয়া যাবে।
+দরকারি গাইড: [`NEXT_TIME_BANGLA.md`](../NEXT_TIME_BANGLA.md)। নতুন server,
+PAT/private key বা repository setting লাগবে না এই branch-push workflow-এর জন্য।

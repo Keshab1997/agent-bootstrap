@@ -41,7 +41,8 @@ python3 "$DST/gh_app.py" connect   # reuse token -> refresh -> reuse pending cod
   problem; let `connect` decide whether a new approval is actually necessary.
 - `/home/user/agent-bootstrap/secrets/` persists in **this workspace**, not every
   new chat/sandbox. An entirely fresh captain workspace still needs approval.
-  Public-repo workers using a patch brief need no GitHub login at all.
+  Reuse each worker's own workspace/login across batches; never share tokens.
+  Workers push their branches and the captain fetches them; no file handoff.
 
 ## 2. Flutter SDK — only when Dart work is coming (~50 s; skip for docs/YAML)
 
@@ -132,9 +133,10 @@ evidence, what you deliberately did not touch**.
 
 If Keshab hands you **`CAPTAIN_START_PROMPT.md`** instead of this file, you are the
 **captain**: you split the work into worker briefs and own review/merge/push.
-Public-repo workers default to **no-login patch handoffs**; authenticated branch
-push is an explicit alternative. Your playbook is `captain/CAPTAIN_PROMPT.md`;
-the default template is `captain/WORKER_PATCH_BRIEF_TEMPLATE.md`.
+Workers reuse their own saved sessions, push `agent/A|B|C/<slug>` branches, and
+you fetch/review/check/integrate those branches. Keshab transfers no files.
+Your playbook is `captain/CAPTAIN_PROMPT.md`; the brief template is
+`captain/WORKER_BRIEF_TEMPLATE.md`. Fresh worker workspaces may need approval.
 
 ---
 

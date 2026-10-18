@@ -29,14 +29,12 @@ cat /home/user/agent-bootstrap/captain/CAPTAIN_PROMPT.md
 
 Follow it exactly. It makes you the single point of contact:
 
-- you split his work by file, using **no-login patch briefs for public repos**:
-  `captain/WORKER_PATCH_BRIEF_TEMPLATE.md` (examples: `captain/examples/`);
-- workers use their own sandboxes/local branches, return patch attachments and
-  never push or touch `main`. Keshab attaches those files here for your review;
-- private repos or unsuitable patch handoffs use explicit branch mode, which can
-  require worker approval; tell Keshab first, never share credentials;
-- you review the actual diff, run the cheap gate, fix small issues, integrate,
-  push `main` and report in his format;
+- you split his work by file using `captain/WORKER_BRIEF_TEMPLATE.md` (examples:
+  `captain/examples/`); use unique worker branches and reuse worker workspaces;
+- workers restore their own saved login, push only their `agent/A|B|C/<slug>`
+  branches and never touch `main`. A fresh workspace may need first approval;
+- you fetch their branches yourself, review the actual diff, run the cheap gate,
+  fix small issues, integrate, push `main` and report. No file handoff for Keshab;
 - you **never** push a tag/release, never touch secrets/settings, and you ask him
   before anything public or irreversible.
 

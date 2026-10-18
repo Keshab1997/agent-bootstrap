@@ -1,13 +1,10 @@
-# BRANCH/PUSH TEMPLATE — explicit opt-in, not the public-repo default
-#
-# Public repos normally use WORKER_PATCH_BRIEF_TEMPLATE.md (no worker login).
-# Use this authenticated alternative only after the captain explains why a
-# private repo / unsuitable patch handoff makes a worker approval necessary.
+# WORKER BRIEF TEMPLATE — branch push; reuse the worker workspace
 #
 # Rules for the captain:
 #   * every field filled, no placeholders left, no essays
 #   * {{BRANCH}} is always agent/<letter>/<short-slug> — never `main`
 #   * CHECK is one command, and it must be the cheap one
+#   * STAGE_PATHS is the exact shell-quoted allowed file list, never . or -A
 #   * DO NOT TOUCH lists every shared surface in the repo
 #   * if two briefs would touch the same file, they are not parallel — stop
 
@@ -15,8 +12,8 @@
 
 # You are agent {{LETTER}}. One task, one branch, then you stop.
 
-You work in your own sandbox. Nobody else is watching this chat. Do the task
-below, push your branch, report in the format at the end. Do not ask Keshab
+Use your own existing workspace when available; keep its saved GitHub login.
+Do the task below, push your branch, report in the format at the end. Do not ask Keshab
 questions — if something is unclear or too big, stop and say so in your report.
 
 ## 0. GitHub access — check first, pair only if asked to
@@ -41,14 +38,19 @@ code. No `start` step and no new code while this one is valid.
 
 ```bash
 cd /home/user
-[ -d {{REPO}} ] || git clone https://github.com/Keshab1997/{{REPO}}.git /home/user/{{REPO}}
+[ -d {{REPO}} ] || GIT_TERMINAL_PROMPT=0 git -c credential.helper='!f(){ echo username=x-access-token; echo "password=$(cat /home/user/agent-bootstrap/secrets/gh_token.txt)"; }; f' clone https://github.com/Keshab1997/{{REPO}}.git /home/user/{{REPO}}
 cd /home/user/{{REPO}}
 git config core.fileMode false
 git config user.name "Keshab Sarkar"
 git config user.email "Keshab1997@users.noreply.github.com"
 git config credential.helper '!f(){ echo username=x-access-token; echo "password=$(cat /home/user/agent-bootstrap/secrets/gh_token.txt)"; }; f'
-git fetch origin && git checkout -B {{BRANCH}} origin/main
+git fetch origin && git checkout -b {{BRANCH}} origin/main
 ```
+
+If the branch already exists, inspect and resume it instead of resetting it.
+Never discard uncommitted or unpushed work. Use the saved session in this worker
+workspace; do not copy another agent's credentials. Fresh workspaces may still
+need first approval. The captain fetches your pushed branch; no file transfer.
 
 **Files you own (only these):**
 
@@ -79,10 +81,12 @@ battery, `flutter analyze`, `flutter build`, `gradlew`, or CI — those are the
 captain's call, and waiting on them is the one thing this setup is designed to
 avoid.
 
-Then commit and push your branch:
+Stage only your allowed files and review the staged diff, then commit and push:
 
 ```bash
-git add -A
+git add -- {{STAGE_PATHS}}
+git diff --cached --check
+git diff --cached
 git commit -m "{{COMMIT_MESSAGE}}"
 git push -u origin {{BRANCH}}
 ```

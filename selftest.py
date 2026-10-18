@@ -17,8 +17,6 @@ import io
 import json
 import html
 import re
-import shutil
-import subprocess
 import os
 from pathlib import Path
 import sys
@@ -537,66 +535,7 @@ class AuthTests(unittest.TestCase):
         self.assertTrue(state["has_refresh_token"])
 
 
-class HandoffTests(unittest.TestCase):
-    @unittest.skipUnless(shutil.which("git"), "git unavailable; auth tests still run")
-    def test_patch_recipe_round_trips_text_binary_add_delete_and_mode(self):
-        with tempfile.TemporaryDirectory(prefix=".handoff-selftest-", dir=SRC.parent) as root:
-            root = Path(root)
-            source, worker, captain = (root / name for name in ("source", "worker", "captain"))
-            source.mkdir()
-            env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
-                       GIT_TERMINAL_PROMPT="0", GIT_TEMPLATE_DIR=str(root / "empty-template"))
-            (root / "empty-template").mkdir()
-            for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
-                env.pop(key, None)
-
-            def git(repo, *arguments):
-                result = subprocess.run(["git", *arguments], cwd=repo, env=env,
-                                        capture_output=True, check=True)
-                return result.stdout.strip()
-
-            def identity(repo):
-                git(repo, "config", "user.name", "Offline workflow test")
-                git(repo, "config", "user.email", "test@example.invalid")
-
-            git(source, "init", "-q")
-            git(source, "symbolic-ref", "HEAD", "refs/heads/main")
-            identity(source)
-            (source / "note.txt").write_text("before\n")
-            (source / "remove.txt").write_text("remove me\n")
-            (source / "asset.bin").write_bytes(b"\x00old\xff")
-            (source / "run.sh").write_text("#!/bin/sh\nexit 0\n")
-            git(source, "add", ".")
-            git(source, "commit", "-qm", "fixture base")
-            base = git(source, "rev-parse", "HEAD").decode()
-            git(root, "clone", "-q", str(source), str(worker))
-            git(root, "clone", "-q", str(source), str(captain))
-            identity(worker)
-            identity(captain)
-            git(worker, "checkout", "-qb", "agent/A/test", base)
-            (worker / "note.txt").write_text("after\n")
-            (worker / "new.txt").write_text("new file\n")
-            (worker / "remove.txt").unlink()
-            (worker / "asset.bin").write_bytes(b"\x00new\xfe\x01")
-            os.chmod(worker / "run.sh", 0o755)
-            git(worker, "add", "--", "note.txt", "new.txt", "remove.txt", "asset.bin", "run.sh")
-            git(worker, "commit", "-qm", "fixture worker change")
-            patch = root / "A-test.patch"
-            # Do not strip bytes from a patch: preserve its final newline.
-            patch.write_bytes(subprocess.run(
-                ["git", "diff", "--binary", "--full-index", base, "HEAD"], cwd=worker,
-                env=env, capture_output=True, check=True).stdout)
-            self.assertTrue(patch.stat().st_size)
-            git(captain, "checkout", "-qb", "captain/review/test")
-            git(captain, "apply", "--check", "--index", str(patch))
-            git(captain, "apply", "--index", str(patch))
-            git(captain, "diff", "--cached", "--check")
-            self.assertEqual(git(captain, "write-tree"), git(worker, "rev-parse", "HEAD^{tree}"))
-            git(captain, "commit", "-qm", "fixture reviewed change")
-            git(captain, "checkout", "-q", "main")
-            git(captain, "merge", "--ff-only", "captain/review/test")
-            self.assertEqual(git(captain, "status", "--porcelain"), b"")
-
+class PromptTests(unittest.TestCase):
     @unittest.skipUnless((SRC.parent / "AGENT_START_PROMPT.md").exists(), "no local docs in standalone mode")
     def test_copyable_prompts_match_the_markdown(self):
         text = (SRC.parent / "AGENT_START_PROMPT.md").read_text()

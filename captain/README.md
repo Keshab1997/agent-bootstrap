@@ -1,48 +1,40 @@
-# captain/ — এক Captain, কম authorization
+# captain/ — এক Captain, workers-এর সরাসরি branch push
 
-**Captain-ই GitHub login ও publish করবে। Public repo-র workers default-এ login
-ছাড়া কাজ করে `.patch` দেবে।** একই Captain workspace-এর token/refresh রাখা থাকলে
-প্রতি worker-এর জন্য আলাদা approval লাগে না।
+**কোনো ফাইল download/upload করে handoff করতে হবে না।** Workers নিজেদের
+GitHub branch-এ push করবে; Captain সেখান থেকে fetch করে review/merge করবে।
 
 ```text
-Keshab → Captain → frozen brief A/B/C → workers (local branches, no push)
-            ↑                              ↓
-            └──── patch + report attachment ┘
+Keshab → Captain → brief A/B/C → workers → GitHub worker branches
+            ↑                               ↓
+            └──────── git fetch / review ──┘
             ↓
-       review → check → commit → main push → report
+       check → merge → main push → report
 ```
 
 ## শুরু
 
 1. Captain chat-এ root-এর `CAPTAIN_START_PROMPT.md` দিন। সে saved session
-   restore করবে; সত্যিই দরকার হলে তবেই approval চাইবে।
-2. Repo ও কাজ বলুন। Captain ফাইল ভাগ করে **patch briefs** লিখবে।
-3. Brief-গুলো আলাদা worker chat-এ দিন। Public repo-তে authorization লাগবে না।
-4. Workers-এর **আসল `.patch` ফাইল report-সহ Captain চ্যাটে attach করুন**। শুধু
-   অন্য চ্যাটের local path দিলে Captain পড়তে পারবে না।
-5. Captain diff review → cheap check → `main` push → পাঁচ লাইনের report।
-
-## কোন mode কখন
-
-| Mode | ব্যবহার | Worker approval |
-|---|---|---|
-| **Patch — default** | Public repo, file attachment দিয়ে handoff সম্ভব | নেই; worker push করবে না |
-| Branch — explicit opt-in | Private repo বা patch handoff অসুবিধাজনক | নিজস্ব pairing লাগতে পারে; Captain আগে জানাবে |
-
-Private source-কে public করা বা Captain-এর `secrets/` worker-কে দেওয়া যাবে না।
-Patch handoff কম browser approval-এর বিনিময়ে file attachment-এর এক ধাপ যোগ করে।
-একদম নতুন Captain workspace-এ প্রথম approval এখনও লাগতে পারে।
+   restore করবে; সত্যিই দরকার হলে approval চাইবে।
+2. Repo ও কাজ বলুন। Captain ফাইল ভাগ করে A/B/C brief লিখবে।
+3. Brief-গুলো worker chat-এ দিন। **সম্ভব হলে একই worker chats/workspaces রাখুন।**
+   নতুন workspace-এর প্রথমবার approval লাগতে পারে; পরে saved login/refresh reuse হবে।
+4. Worker নিজের `agent/A|B|C/...` branch push করবে। Captain-কে শুধু জানান কারা
+   push করেছে; সে `git fetch` করে নিজেই পরিবর্তন নিতে পারবে।
+5. Captain diff review → cheap check → merge → `main` push → পাঁচ লাইনের report।
 
 ## ফাইল
 
 | ফাইল | কাজ |
 |---|---|
-| `CAPTAIN_PROMPT.md` | Captain-এর নিয়ম, file split, দুই mode-এর review/merge, report |
-| `WORKER_PATCH_BRIEF_TEMPLATE.md` | **Default public-repo brief**, no login/no push |
-| `examples/WORKER_PATCH_example.md` | সম্পূর্ণ ভরা patch-mode উদাহরণ |
-| `WORKER_BRIEF_TEMPLATE.md` | Explicit authenticated branch/push alternative |
-| `examples/WORKER_A_example.md`, `WORKER_B_example.md`, `WORKER_C_example.md` | Branch-mode উদাহরণ; default নয় |
+| `CAPTAIN_PROMPT.md` | Captain-এর নিয়ম, file split, review/merge, report |
+| `WORKER_BRIEF_TEMPLATE.md` | Worker-এর task, allowed files, check ও branch-push brief |
+| `examples/WORKER_A_example.md`, `WORKER_B_example.md`, `WORKER_C_example.md` | ভরা branch-push উদাহরণ |
 | `HOW_TO_START_BN.md` | মানুষের জন্য ধাপে ধাপে নির্দেশনা |
 
+প্রত্যেক workspace নিজের credentials রাখবে। Token/refresh token কখনো share হবে
+না। Fresh workspace, revoked credentials বা হারানো refresh হলে আবার approval
+লাগতে পারে—কখনোই “আর কোনোদিন লাগবে না” ধরে নেবেন না। Authenticator-এর 2FA code
+এই app authorization-এর বিকল্প নয়।
+
 Captain tags/releases, secrets/settings/workflows বদলাবে না অনুমতি ছাড়া।
-কোনো patch/branch diff না পড়ে merge করবে না। কোনো worker CI dispatch করবে না।
+কোনো branch diff না পড়ে merge করবে না। কোনো worker CI dispatch করবে না।
