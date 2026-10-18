@@ -52,8 +52,9 @@ the workspace.
   git config credential.helper '!f(){ echo username=x-access-token; echo "password=$(cat /home/user/agent-bootstrap/secrets/gh_token.txt)"; }; f'   # token never written to disk
   ```
 
-- Token strategy: ever **bypass this checkpoint** — it is correct behavior for
-  these repos. Re-pair with `python3 gh_app.py connect` and read the code out loud.
+- Restore with `python3 gh_app.py connect`: reuse, refresh, then resume the
+  saved code. Only show a code if one is printed; never force re-pair for access
+  expiry or a network error. A genuinely fresh workspace still needs approval.
 
 ## Refresh an app's agent pack (any repo showing the marker)
 

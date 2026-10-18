@@ -1,181 +1,121 @@
-# 🔖 পরেরবার কী করব — Cheat Sheet
+# 🔖 পরেরবার কী করব — কম authorization, একই starter
 
 **Repo:** https://github.com/Keshab1997/agent-bootstrap
-**এই cheat sheet-এর সরাসরি লিংক:** https://github.com/Keshab1997/agent-bootstrap/blob/main/NEXT_TIME_BANGLA.md
-**Raw (কপি করার সুবিধার্থে):** https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/NEXT_TIME_BANGLA.md
 **App:** `keshab-flutter-assistant` · **Account:** Keshab1997
 
----
+## সবচেয়ে সহজ পথ
 
-## ✅ সবচেয়ে সহজ উপায় (৯০% সময় এটাই)
+Captain-এর নতুন চ্যাটে [`CAPTAIN_START_PROMPT.md`](CAPTAIN_START_PROMPT.md) দিন,
+তারপর কোন repo-তে কী কাজ চান বলুন। একই Captain workspace ব্যবহার চালিয়ে গেলে
+সেভ করা login-টাই কাজে লাগবে।
 
-যেকোনো AI agent-এর চ্যাটে গিয়ে **শুধু এই লাইনটা paste করুন**:
+শুধু একজন agent দিয়ে কাজ হলে [`AGENT_START_PROMPT.md`](AGENT_START_PROMPT.md)
+বা [`PROMPT-FOR-NEW-AGENT.txt`](PROMPT-FOR-NEW-AGENT.txt) দিন।
 
-```
-Clone https://github.com/Keshab1997/agent-bootstrap and follow its README.md to
-connect to my GitHub via device flow. Then run: python3 gh_app.py connect
-Show me the 8-character code clearly and wait until I approve it in my browser.
-```
+একদম ছোট করে বললেও চলে:
 
-বাংলায় লিখলেও চলবে:
-
-```
-https://github.com/Keshab1997/agent-bootstrap clone করে README.md অনুযায়ী
-আমার GitHub-এ device flow দিয়ে connect হও। python3 gh_app.py connect চালাও,
-আমাকে ৮-অক্ষরের code টা দেখাও, আর আমি browser-এ approve না করা পর্যন্ত অপেক্ষা করো।
+```text
+https://github.com/Keshab1997/agent-bootstrap clone করো
+/home/user/agent-bootstrap-এ। python3 gh_app.py connect চালিয়ে আগে saved
+session restore করো। ALREADY CONNECTED হলে কিছু চাইবে না; code দেখালেই শুধু
+আমাকে দেবে। turn শেষ হলে একই code-এ device_pair.py poll 60 দিয়ে resume করো।
 ```
 
-### 🐦 Flutter/Dart project হলে — এই ভার্সনটাই paste করুন (একবারেই সব)
+## এখন কীভাবে কাজ করে
 
-```
-Clone https://github.com/Keshab1997/agent-bootstrap and follow its README.md to
-connect to my GitHub via device flow. Then run: python3 gh_app.py connect
-Show me the 8-character code clearly and wait until I approve it in my browser.
-Then, since this is a Flutter project, also run bash <(curl -fsSL
-https://raw.githubusercontent.com/Keshab1997/flutter-bootstrap/main/setup.sh)
---quiet --json to give yourself a Flutter SDK, and run flutter pub get,
-flutter analyze and flutter test on <repo/path>.
-```
-
-বাংলায়:
-
-```
-agent-bootstrap দিয়ে আমার GitHub-এ connect হও (device flow, ৮-অক্ষরের code দেখাও,
-আমি approve করা পর্যন্ত অপেক্ষা করো)। এটা Flutter project, তাই তারপর
-flutter-bootstrap-এর setup.sh চালিয়ে নিজের sandbox-এ Flutter SDK বসাও,
-তারপর <repo/path>-এ flutter pub get, flutter analyze আর flutter test চালাও।
+```text
+সেভ করা token কাজ করছে? → সরাসরি কাজ
+         ↓ না
+সেভ করা refresh দিয়ে ঠিক হলো? → সরাসরি কাজ, browser লাগবে না
+         ↓ না; credential সত্যিই নেই/বাতিল
+আগের pending code এখনও বেঁচে আছে? → সেই code-ই resume
+         ↓ না
+তখনই নতুন code → একবার browser-এ অনুমোদন
 ```
 
-### তারপর আপনার কাজ মাত্র ৩টা ক্লিক
+Network error, GitHub-এর সাময়িক সমস্যা বা rate limit হলে **retry** করবে;
+ওগুলোকে নতুন authorization লাগার প্রমাণ হিসেবে ধরবে না।
 
-| ধাপ | কী করবেন | সময় |
-|---|---|---|
-| 1️⃣ | Agent যে লিংকটা দেখাবে সেটা খুলুন → **https://github.com/login/device** | ৫ সেকেন্ড |
-| 2️⃣ | Agent যে `XXXX-XXXX` code দেখাবে সেটা টাইপ করে **Continue** | ১০ সেকেন্ড |
-| 3️⃣ | **Authorize** চাপুন | ১ সেকেন্ড |
+## Code দেখালে শুধু তখন
 
-**ব্যস।** Agent নিজে থেকেই token ধরে ফেলবে, save করবে, আর কাজ শুরু করে দেবে।
+1. https://github.com/login/device খুলুন।
+2. দেখানো `XXXX-XXXX` code দিন → **Continue**।
+3. App-এর নাম `keshab-flutter-assistant` এবং permissions দেখে **Authorize** করুন।
 
-> ⏱️ Code টা **১৫ মিনিট** valid। সময় পার হয়ে গেলে agent-কে বলুন
-> *"নতুন code দাও"* — ও আবার generate করে দেবে। কোনো ক্ষতি নেই।
-
----
-
-## 🖥️ নিজে হাতে করতে চাইলে (terminal থেকে)
+Code প্রায় ১৫ মিনিট বৈধ। Agent এবার code দেখানোর **আগেই** সেটি সেভ করে।
+আপনি approve করার আগে/পরে turn শেষ হলেও নতুন code দরকার নেই:
 
 ```bash
-git clone https://github.com/Keshab1997/agent-bootstrap.git /home/user/agent-bootstrap
-python3 /home/user/agent-bootstrap/gh_app.py connect
-# → আগে থেকেই connected থাকলে বলবে "ALREADY CONNECTED" — কিছু করার নেই
-# → নইলে code টা বের হবে → browser-এ approve করুন
+python3 /home/user/agent-bootstrap/device_pair.py poll 60
 ```
 
-> **`/home/user/agent-bootstrap`** — এই path-টাই দিতে হবে। অন্য জায়গায় (যেমন
-> `/tmp`) clone করলে token পরের turn-এ মুছে যায়, আর agent বারবার authorize
-> চাইতে থাকে।
+`TIMEOUT for this turn` মানে ৬০ সেকেন্ডের অপেক্ষা শেষ, code শেষ নয়। একই command
+আবার চলবে। সত্যিই `EXPIRED` হলে `gh_app.py connect` নতুন code নিতে পারে।
 
-অথবা এক লাইনে:
+## Public repo-র workers: কোনো login নয়
+
+Captain-এর default **patch brief** পেলে worker:
+
+- public repo clone করে নিজের local branch-এ কাজ করবে;
+- একটিমাত্র নির্ধারিত check চালিয়ে `.patch` ফাইল ও report দেবে;
+- GitHub authorize চাইবে না, branch push-ও করবে না।
+
+**ওই patch ফাইলটি report-সহ Captain চ্যাটে attach করুন।** অন্য চ্যাটের local
+file-path Captain নিজে পড়তে পারে না। Captain diff দেখে, check করে, `main`-এ push করবে।
+
+এতে একই Captain workspace-এ তিন worker-এর জন্য তিনটি অতিরিক্ত approval বাদ যায়।
+Private repo বা patch handoff না চললে Captain আগে জানিয়ে branch/push mode বেছে নেবে;
+সে ক্ষেত্রে worker-এর নিজের pairing লাগতে পারে। Token কখনো share হবে না।
+
+## পুরোনো clone থাকলে একবার update
+
+নিজের local edit না থাকলে:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/setup.sh | bash
+cd /home/user/agent-bootstrap
+git pull --ff-only
+python3 gh_app.py connect
 ```
 
-**GitHub + Flutter একসাথে** (Flutter/Dart project-এ কাজ করলে):
+Update আটকে গেলে local edit বা `secrets/` মুছবেন না। Agent-কে সমস্যাটা দেখুন বলুন।
+নতুন clone সরাসরি নতুন code-টাই পাবে। PAT/private key/server সেটআপ লাগবে না।
+
+## দরকারি command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/setup.sh \
-  | bash -s -- --with-flutter
+python3 gh_app.py connect              # reuse → refresh → resume → দরকার হলে pair
+python3 gh_app.py connect --show-only  # code সেভ/পুনর্ব্যবহার; poll না করে exit
+python3 gh_app.py status               # check/refresh; নতুন code কখনো নেবে না
+python3 device_pair.py status          # pending code-এর বাকি সময়, offline
+python3 device_pair.py poll 60         # একই code resume
+python3 selftest.py                    # fake token দিয়ে offline regression tests
 ```
 
-Flutter-এর জন্য আলাদা করে চালাতে চাইলে:
+`PAIRED` = কাজ করা যাবে। `UNCONFIRMED` = পরে retry, নতুন approval নয়।
+`NOT PAIRED` = `connect` চালান; সেটি কী বলে দেখুন।
 
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Keshab1997/flutter-bootstrap/main/setup.sh)
-```
+## কতদিন চলবে — সীমাটা পরিষ্কার
 
-⏱️ Flutter SDK নামতে ~৪০ সেকেন্ড লাগে, আর ওটা ২.৫ GB — তাই যেটা লাগে শুধু সেটাই চালান।
-Flutter setup ব্যর্থ হলেও GitHub connection ঠিক থাকে।
-
-দরকারি কমান্ড:
-
-```bash
-python3 gh_app.py status          # "verdict: PAIRED" মানে ঠিক আছে (exit 0)
-python3 gh_app.py whoami          # কে login হলো
-python3 gh_app.py repos           # repo লিস্ট
-python3 gh_app.py api GET /user   # যেকোনো REST call
-python3 gh_app.py revoke          # connection বিচ্ছিন্ন
-python3 gh_app.py connect --force # জোর করে নতুন code (সাধারণত লাগবে না)
-```
-
-কোনো `pip install` লাগবে না — শুধু python3 থাকলেই হবে।
-
----
-
-## 📱 ফোনে রাখার মতো একদম ছোট ভার্সন
-
-> **agent কে বলো:** `Keshab1997/agent-bootstrap` clone করে README অনুযায়ী connect হও
-> **আমি করব:** github.com/login/device → code টাইপ → Authorize
-
----
-
-## ⏰ কতদিন চলবে?
-
-| জিনিস | মেয়াদ |
+| জিনিস | আচরণ |
 |---|---|
-| Device code | ১৫ মিনিট (approve না করলে নিজে থেকেই মরে যাবে, ক্ষতি নেই) |
-| Access token (`ghu_…`) | **৮ ঘণ্টা** — একটা কাজের session-এর জন্য যথেষ্ট |
-| Auto-refresh | ৮ ঘণ্টা শেষ হওয়ার আগে `gh_app.py` নিজে থেকে refresh করে নেয় |
-| একই session-এ আবার authorize | **কখনো লাগে না** — `connect` নিজেই চেক করে skip করে |
-| Refresh token | **১৮১ দিন** — এই সময়ের মধ্যে code ছাড়াই চলবে |
-| ১৮১ দিন পরে | আবার একবার device flow (৩ ক্লিক) |
+| Access token | সাধারণত ৮ ঘণ্টা; valid refresh থাকলে browser ছাড়াই নতুন token |
+| Refresh token | সাধারণত ১৮১ দিনের মেয়াদ; ব্যবহারে rotate হয়, নতুনটি সেভ হয় |
+| একই workspace-এর পরের turn | সেভ করা session/pending code reuse হয় |
+| একদম নতুন Captain workspace | পুরোনো credential নেই — প্রথম approval এখনও দরকার |
+| Public-repo patch worker | GitHub login লাগে না |
+| Revoked/expired refresh বা হারানো credential | আবার approval লাগতে পারে |
 
-**মানে:** একবার connect করলে সেই sandbox/session যতক্ষণ বাঁচে ততক্ষণ চলবে।
-নতুন sandbox = নতুন ৩ ক্লিক। এটাই ইচ্ছাকৃত — নিরাপত্তার জন্য।
+**শুধু public repo দিয়ে সব নতুন workspace-কে গোপনে write access দেওয়া নিরাপদ নয়।**
+তার জন্য আলাদা secure credential-delivery ব্যবস্থা লাগবে; এই update তা বানায় না।
+`vault.py` ব্যবহার করলেও তার password নিরাপদে দেওয়ার ব্যবস্থা চাই।
 
----
+## নিরাপত্তা ও Flutter
 
-## 🚨 সমস্যা হলে
-
-| লক্ষণ | সমাধান |
-|---|---|
-| `HTTP 401` / `Bad credentials` | `python3 gh_app.py connect` আবার চালান |
-| `expired_token` | code টা ১৫ মিনিট পার হয়ে গেছে — নতুন code নিন |
-| `access_denied` | browser-এ Cancel চেপে ফেলেছেন — আবার করুন |
-| Agent code দেখাচ্ছে না | উপরের paste-করা লাইনটাই হুবহু দিন |
-| approve করেছি, তবু আবার code চাইছে | turn শেষ হয়ে poll টা মরে গেছে। নতুন code না নিয়ে বলুন: `python3 device_pair.py poll 60` (code ১৫ মিনিট বাঁচে) |
-| প্রতি turn-এ আবার authorize | agent `/tmp`-এ clone করছে — বলুন `/home/user/agent-bootstrap` ব্যবহার করতে |
-| Agent repo clone করতে পারছে না | agent-কে বলুন raw URL ব্যবহার করতে: `https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/gh_app.py` |
-
-**সব কিছু একসাথে বন্ধ করতে:**
-GitHub → Settings → Applications → Installed GitHub Apps →
-`keshab-flutter-assistant` → **Uninstall**
-(এটা করলে সব token সাথে সাথেই বাতিল হয়ে যাবে)
-
----
-
-## 🐦 Flutter নিয়ে ৩টা কথা
-
-1. **Sandbox-এ Flutter আগে থেকে থাকে না**, আর install করা SDK পরের session-এ
-   মুছে যায় — তাই প্রতিবার ~৪০ সেকেন্ডে আবার বসাতে হয় (`flutter-bootstrap` এর
-   কাজ এটাই)।
-2. **`--with-flutter` দিলে একবারেই দুটো কাজ** — GitHub connect + Flutter SDK।
-   Flutter না লাগলে দেবেন না (২.৫ GB)।
-3. **Install হওয়ার পর `flutter analyze`, `flutter test` সরাসরি লিখলেই চলে** —
-   আলাদা করে PATH সেট করতে হয় না। বিস্তারিত: `flutter-bootstrap`-এর
-   `NEXT_TIME_BANGLA.md`।
-
----
-
-## 🔒 মনে রাখার মতো ৩টা কথা
-
-1. **Repo-তে কোনো password/token নেই** — তাই public হলেও বিপদ নেই। কেউ clone
-   করলে শুধু স্ক্রিপ্ট পাবে, আপনার account-এ ঢুকতে গেলে আপনার browser-এর
-   Authorize লাগবেই।
-2. **Agent-কে কখনো নিজের GitHub password বা টোকেন টাইপ করে দেবেন না।** এই
-   পুরো ব্যবস্থাটাই বানানো হয়েছে যাতে সেটা না লাগে।
-3. **নতুন device code দেখালে approve করার আগে দেখে নিন** App-এর নাম
-   `keshab-flutter-assistant` কিনা। অন্য কিছু দেখালে Authorize চাপবেন না।
-
----
-
-*এই ফাইলটা: https://github.com/Keshab1997/agent-bootstrap/blob/main/NEXT_TIME_BANGLA.md · তৈরি: 2026-09-25*
+- `secrets/`, token, refresh token, private key বা vault password git/chat/worker
+  brief-এ দেবেন না। এক agent-এর refresh token আরেকজনকে কপি করবেন না।
+- `/home/user/agent-bootstrap` একই workspace-এ রাখুন; নতুন workspace নিজে থেকে
+  পুরোনো workspace-এর credentials পায় না।
+- Flutter/Dart কাজ হলে starter prompt-এর SDK ও cheap-check নিয়ম মানুন।
+  Authorization ঠিক করতে Flutter install/build বা CI চালানোর দরকার নেই।
+- Access বন্ধ করতে GitHub-এর App settings থেকে revoke/uninstall করুন;
+  নতুন authorization না হওয়া পর্যন্ত আর access থাকবে না।

@@ -1,3 +1,7 @@
+> **Authenticated branch-mode example (explicit opt-in).** Public repos default
+> to `WORKER_PATCH_example.md`: no worker login or push. Do not hand out this
+> branch-mode brief without explaining the possible extra approval to Keshab.
+
 # EXAMPLE BRIEF — Agent B (same repo as A, different files, same batch)
 
 # You are agent B. One task, one branch, then you stop.

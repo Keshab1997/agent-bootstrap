@@ -10,40 +10,38 @@
 Everything below is the whole onboarding. Read it once, then work. **Speed is
 the point**: never wait on CI, never run a check the change does not need.
 
-## 1. Pair with GitHub — once per session, and only if you are not already paired
+## 1. Restore GitHub access — approve only when recovery is not possible
 
 ```bash
-DST=/home/user/agent-bootstrap   # /home/user is the ONLY path that survives turns
+DST=/home/user/agent-bootstrap   # keep the session in this workspace between turns
 [ -f "$DST/gh_app.py" ] || git clone https://github.com/Keshab1997/agent-bootstrap "$DST"
-python3 "$DST/gh_app.py" connect   # safe to run: it skips itself if already paired
+python3 "$DST/gh_app.py" connect   # reuse token -> refresh -> reuse pending code
 ```
-
-**Read its output, then behave accordingly — this is the whole trick:**
 
 | What it printed | What you do |
 |---|---|
-| `ALREADY CONNECTED -- device flow skipped` | You are paired. Show nothing, ask nothing. Start working. |
-| A code like `XXXX-XXXX` | **Show it as a headline, not fine print:** *"Open https://github.com/login/device and enter XXXX-XXXX"*. He approves in his browser; the script polls and finishes on its own. Never ask him for a token or a password — ever. |
+| `ALREADY CONNECTED -- device flow skipped` | Ask nothing; start working. An expired access token may have been refreshed automatically. |
+| A code like `XXXX-XXXX` | Show: *"Open https://github.com/login/device and enter XXXX-XXXX"*. The human approves; never ask for a token or password. |
+| `NOT starting a device flow` / `UNCONFIRMED` | Retry later. A network/rate-limit/server error is not a reason to re-authorize. |
 
-- **Never re-pair "to be safe".** Asking him to authorize a session that is
-  already authorized is the #1 complaint about agents in this workspace.
-  The token is at `/home/user/agent-bootstrap/secrets/gh_token.txt` (~8 h,
-  auto-refreshes). Never print it in full. `connect --force` exists only for a
-  genuinely dead token.
-- **If his approval arrives after your turn ended** (the poll gets cut off),
-  the code is still valid ~15 min — do **not** mint a new one. Use the
-  resumable helper, which keeps the pending code in `secrets/device_state.json`:
+- Never re-pair "to be safe", copy another agent's `secrets/`, or use `--force`
+  just because the access token expired. `connect` tries the saved refresh first.
+- The pending code is saved **before** it is printed. If polling is interrupted,
+  resume the same code in a later turn (no `start` step needed):
 
   ```bash
-  python3 /home/user/agent-bootstrap/device_pair.py start      # same code, saved
-  python3 /home/user/agent-bootstrap/device_pair.py poll 60    # resume in a later turn
+  python3 /home/user/agent-bootstrap/device_pair.py poll 60
   ```
 
-  Repeat `poll 60` until it prints `APPROVED`; start a new code only if it says
-  `EXPIRED`. (`connect` alone cannot do this — its poll dies with the turn.)
-- Verify with `python3 "$DST/gh_app.py" status` → `verdict: PAIRED`
-  (exit code 0 = paired, 1 = not paired, so `status || connect` also works) or
-  `python3 "$DST/gh_app.py" whoami`.
+  Rerunning `connect` also resumes it. A poll budget ending is not code expiry;
+  keep polling while it remains valid. For an agent-friendly nonblocking start,
+  `connect --show-only` saves/reuses the code and exits immediately.
+- `python3 "$DST/gh_app.py" status` checks/recovers without opening a device flow.
+  Exit 0 / `PAIRED` means authenticated. Exit 1 may mean a temporary network
+  problem; let `connect` decide whether a new approval is actually necessary.
+- `/home/user/agent-bootstrap/secrets/` persists in **this workspace**, not every
+  new chat/sandbox. An entirely fresh captain workspace still needs approval.
+  Public-repo workers using a patch brief need no GitHub login at all.
 
 ## 2. Flutter SDK — only when Dart work is coming (~50 s; skip for docs/YAML)
 
@@ -116,8 +114,8 @@ log first**, then fix.
   inside a fresh shell lands in `/var/tmp/...` or `/tmp/...` — those are wiped
   between turns, so `secrets/gh_token.txt` disappears and you look unpaired after
   every turn. Always `/home/user/agent-bootstrap`, one clone per sandbox.
-- Token expired (`HTTP 401` from `status`)? Get a fresh code — but only after
-  checking `status` shows `NOT WORKING`, and show the code to him.
+- Token expired? Run `connect`: it refreshes first. Show a code only if it
+  actually prints one; a temporary error is a retry, not a fresh pairing.
 
 ## 8. "Done" looks like
 
@@ -133,10 +131,10 @@ evidence, what you deliberately did not touch**.
 ## Working with other agents — captain mode
 
 If Keshab hands you **`CAPTAIN_START_PROMPT.md`** instead of this file, you are the
-**captain**: you split the work into worker briefs, the workers push their own
-`agent/A|B|C/<slug>` branches, and you review, fix, merge and report. Your playbook
-is `captain/CAPTAIN_PROMPT.md` in this same clone; the brief template is
-`captain/WORKER_BRIEF_TEMPLATE.md`.
+**captain**: you split the work into worker briefs and own review/merge/push.
+Public-repo workers default to **no-login patch handoffs**; authenticated branch
+push is an explicit alternative. Your playbook is `captain/CAPTAIN_PROMPT.md`;
+the default template is `captain/WORKER_PATCH_BRIEF_TEMPLATE.md`.
 
 ---
 

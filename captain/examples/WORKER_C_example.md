@@ -1,3 +1,7 @@
+> **Authenticated branch-mode example (explicit opt-in).** Public repos default
+> to `WORKER_PATCH_example.md`: no worker login or push. Do not hand out this
+> branch-mode brief without explaining the possible extra approval to Keshab.
+
 # EXAMPLE BRIEF — Agent C (different REPO → zero conflict by construction)
 #
 # This is the safest kind of parallelism: A and B share docify (so they are

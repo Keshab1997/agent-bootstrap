@@ -1,165 +1,110 @@
-# 🚀 প্রথম থেকে শুরু — কী লিখবে, কোন ক্রমে
+# 🚀 Captain শুরু করুন — workers-এর জন্য browser approval নয়
 
-> **মনে রাখার এক লাইন:** *"Captain prompt" — তারপর "কী কাজ" — তারপর ও যেই brief দেবে সেগুলো আলাদা চ্যাটে paste।*
+> **এক লাইন:** Captain prompt → কাজ বলুন → workers-কে brief → তাদের patch
+> ফাইল Captain-কে attach → Captain review করে publish করবে।
 
-মোট **৪টা চ্যাট** লাগবে: ১টা Captain + ৩টা worker। প্রতিটা চ্যাট প্রথমবার একটা করে code
-দেখাবে (মোট ৩-৪ বার ব্রাউজারে Approve), তারপর কেউ আর কিছু চাইবে না।
+Public repo-র default workflow-তে শুধু Captain-এর GitHub access লাগে। একই
+Captain workspace ব্যবহার চালিয়ে গেলে saved token/refresh reuse হয়। একদম
+নতুন workspace-এ প্রথম approval এখনও দরকার হতে পারে।
 
----
+## ১. Captain চ্যাট
 
-## ধাপ ১ — Captain-এর চ্যাট (নতুন agent session)
+Root-এর [`CAPTAIN_START_PROMPT.md`](../CAPTAIN_START_PROMPT.md) পুরোটা নতুন
+agent chat-এ paste করুন। সে repo clone করে playbook নিজে পড়বে।
 
-নতুন chat খুলে শুধু এটুকু paste করো — **`CAPTAIN_START_PROMPT.md`-এর পুরোটা**:
+- `ALREADY CONNECTED` বললে কিছুই করতে হবে না।
+- Access token expire হলে আগে saved refresh চেষ্টা করবে।
+- সত্যিই code দেখালেই https://github.com/login/device-এ approve করুন।
+- Turn শেষ হলে নতুন code নয়: `python3 device_pair.py poll 60` দিয়ে একইটি resume।
+- Network error হলে retry; approval বাড়িয়ে ওই সমস্যা ঠিক হয় না।
 
-```text
-# You are the CAPTAIN. Keshab talks only to you.
+শেষে সে বলবে: **Captain ready — কাজ বলো।**
 
-## 1. Pair with GitHub — once per session
-DST=/home/user/agent-bootstrap
-[ -f "$DST/gh_app.py" ] || git clone https://github.com/Keshab1997/agent-bootstrap "$DST"
-python3 "$DST/gh_app.py" connect
-# ALREADY CONNECTED হলে কিছুই করতে হবে না; code দেখালে একবার approve করো।
-# turn শেষ হয়ে গেলে: python3 "$DST/device_pair.py" poll 60
+## ২. কাজ বলুন
 
-## 2. Read your playbook — it lives in the clone you just made
-cat /home/user/agent-bootstrap/captain/CAPTAIN_PROMPT.md
-# সেটাই follow করো। শেষ হলে শুধু লেখো: Captain ready — কাজ বলো।
-```
-
-**গুরুত্বপূর্ণ:** এখানে পুরো playbook লেখা নেই, কেবল **link** — কারণ agent নিজেই clone
-থেকে `captain/CAPTAIN_PROMPT.md` পড়ে নেবে। তাই প্রথম paste টা ছোট (১০ লাইন), আর
-playbook update করলে সব agent নতুনটাই পাবে।
-
-**কোথায় পাবে:** রেপোতে `CAPTAIN_START_PROMPT.md` · copy পেজে `PROMPT_COPY.html`
-("⚡ Captain — one paste" বাটন)। হাতে হাতে চাইলে:
-`https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/CAPTAIN_START_PROMPT.md`
-
-## ধাপ ২ — কাজটা বলো (একই Captain চ্যাটে)
-
-এখন স্বাভাবিক বাংলায় বলো কী করতে চাও। যা বললে ভালো হয়: **কোন repo + কী সমস্যা/কী চাই**।
-উদাহরণ — হুবহু এভাবে লিখতে পারো:
+উদাহরণ:
 
 ```text
 Batch 1 বানাও:
-1) docify — home screen 360px ফোনে overflow করছে, ঠিক করতে হবে
-2) quizbaaz — results screen-এ player list-এ tap করলে কোনো feedback নেই
+1) docify — home screen 360px ফোনে overflow ঠিক করতে হবে
+2) quizbaaz — results screen-এ tap feedback চাই
 3) flutter-builder — README-র বাংলা অংশে একটা বানান ভুল আছে
 
-তিনটা আলাদা brief (A/B/C) লিখে দাও, কোনটা কোন চ্যাটে দেব সেটাও লিখো।
+Repo-গুলো public কিনা যাচাই করে no-login patch briefs দাও। Private হলে আগে জানাও।
 ```
 
-Captain কাজটা ভেঙে **তিনটা ভরা brief** লিখে দেবে — আর প্রতিটার সাথে বলবে কোন চ্যাটে দিতে হবে।
-কোন ফাইল কে ধরবে, কোনটা কেউ ছুঁবে না (`DO NOT TOUCH`), আর কোন check চালাবে — সব ওই brief-এ লেখা থাকবে।
+Captain প্রতিটি brief-এ নির্দিষ্ট base commit, goal, allowed files, exact
+interface, check ও patch filename ভরে দেবে। এক ফাইল দুই worker পাবে না।
 
----
+## ৩. Worker চ্যাট
 
-## ধাপ ৩ — Worker চ্যাটগুলো (৩টা আলাদা নতুন chat)
+A/B/C brief-গুলো আলাদা নতুন chat-এ দিন। **Patch brief-এ worker authorize চাইবে
+না এবং push করবে না।** সে public source clone করে local branch-এ কাজ করবে,
+নির্ধারিত check চালাবে, শেষে একটি `.patch` ফাইল ও report দেবে।
 
-Captain যেই A/B/C brief দেবে, প্রতিটা **আলাদা নতুন agent chat**-এ paste করো।
-(একই চ্যাটে দুইটা brief দিও না — তাহলে দুইজনের সময় ভাগ হয়ে যাবে, parallel থাকবে না।)
-
-প্রতিটা worker চ্যাটও প্রথমবার একটা code দেখাবে → সেটাও approve করে দাও।
-ওরা নিজের branch-এ (`agent/A/…`, `agent/B/…`, `agent/C/…`) কাজ করে push করবে, শেষে
-এমন একটা ব্লক ফেরত দেবে:
+Report-এর ধরন:
 
 ```text
 AGENT A DONE
-branch: agent/A/home-overflow
-sha: 4f2c1ab
-check: flutter test test/home_screen_test.dart → pass
-changed: header row Flexible করা হয়েছে
+mode: patch (no GitHub authorization)
+repo: Keshab1997/docify
+base: <brief-এ থাকা পূর্ণ SHA>
+branch: agent/A/home-overflow (local only)
+sha: <worker-এর local commit SHA>
+patch: A-home-overflow.patch
+sha256: <ফাইলের আসল checksum>
+files: lib/screens/home_screen.dart, test/home_screen_test.dart
+check: flutter test test/home_screen_test.dart → <আসল ফল>
+changed: <আসল পরিবর্তন>
 not touched: theme, pubspec, workflows
 blocked: none
 ```
 
----
+এটি শুধু report-এর উদাহরণ, কোনো test pass হওয়ার দাবি নয়। Worker আসল ফল লিখবে।
 
-## ধাপ ৪ — ফেরত Captain-এর কাছে
+## ৪. Captain-কে patch দিন
 
-ওই `AGENT A DONE` ব্লকগুলো (তিনটা) কপি করে Captain চ্যাটে paste করো:
+Worker-এর `.patch` ফাইল download করে **Captain চ্যাটে attach করুন**, report-টিও
+paste করুন। A/B/C যতজন শেষ করেছে তাদেরগুলো একসঙ্গে দেওয়া যায়।
 
-```text
-AGENT A DONE
-[ব্লকটা paste]
+**শুধু `/home/user/handoff/...` path paste করলে হবে না**—আলাদা sandbox-এর file
+Captain দেখতে পায় না। Patch mode-এ remote branch-ও নেই; `git fetch` দিয়ে ওই
+কাজ পাওয়া যাবে না। এই একবার file handoff-ই worker authorization-এর বিকল্প।
 
-AGENT B DONE
-[ব্লকটা paste]
+## ৫. Review, check, publish
 
-AGENT C DONE
-[ব্লকটা paste]
-```
+Captain checksum/base/path/scope/secrets যাচাই করে **আসল diff পড়বে**। তারপর
+আলাদা review branch-এ patch apply, নির্ধারিত check, commit এবং `main`-এ publish।
+Conflict হলে আন্দাজে বা force দিয়ে apply করবে না।
 
-অথবা এতটুকুই লিখো:
-
-```text
-A, B, C তিনজনই push করেছে — তুমি git fetch করে নিজেই দেখে নাও।
-```
-
-Captain নিজেই `git diff main...origin/agent/A/…` দেখে নিতে পারে — তাই report paste করা
-আবশ্যক নয়, শুধু সুবিধার জন্য।
-
----
-
-## ধাপ ৫ — Captain merge করে, তোমাকে জানায়
-
-Captain: diff পড়ে → ছোট খুঁজে ঠিক করে → merge → `main`-এ push → ৫ লাইনের report দেয়:
+তার report:
 
 ```text
-Batch 1: A merged (4f2c1ab), B merged (9d10e77), C তে conflict — থামিয়ে দিয়েছি
-Changed: home overflow fix; results screen-এ tap feedback
-Evidence: preflight ok; A/B/C diff scope clean
-Not touched: pubspec, workflows, android/
-Next: batch 2 — তুমি বলো
+Batch 1: A merged (<sha7>), B merged (<sha7>), C pending — <কারণ>
+Changed: <প্রতি workstream-এর সংক্ষিপ্ত পরিবর্তন>
+Evidence: <আসল test/check ফল>
+Not touched: <secrets/settings/workflows ইত্যাদি>
+Next: <পরের কাজ বা সিদ্ধান্ত>
 ```
 
-**tag / release / secret / workflow বদলাতে হলে Captain আগে তোমাকে জিজ্ঞেস করবে** — এটা
-ওর prompt-এ লেখা আছে, তাই ট্যাগ সবসময় তোমার হাতেই থাকে।
+Tag/release/secret/settings/workflow বদলাতে হলে আগে আপনার অনুমতি লাগবে।
 
----
+## Private repo বা attachment নিয়ে সমস্যা হলে
 
-## পুরো ছবিটা
+Captain আগে জানিয়ে **branch mode** নিতে পারে। তখন worker-এর নিজের pairing
+লাগবে, সে `agent/A|B|C/...` branch push করবে, Captain `git fetch` করে review করবে।
+পুরোনো `WORKER_BRIEF_TEMPLATE.md` এবং A/B/C branch examples এই mode-এর জন্য রাখা আছে।
 
-```text
-তুমি ──► CAPTAIN চ্যাট ──brief A/B/C──► worker A / B / C চ্যাট
-                                            │ (নিজের branch, নিজের sandbox)
-                                            ▼
- তুমি ◄── Captain: merge + report ◄── "AGENT X DONE" ব্লক (তুমি paste করো)
-              │
-              └──► main-এ push (tag নয় — tag তোমার হাতে)
-```
+কখনো Captain-এর token/refresh token worker-কে কপি করবেন না, source-কে public
+করবেন না, public repo-তে credential রেখে approval বাদ দেওয়ার চেষ্টা করবেন না।
 
----
+## কোন ফাইল কোথায়
 
-## এখন সব কিছু repo-তে — কোথায় কী
+- প্রথম paste: `CAPTAIN_START_PROMPT.md`
+- Captain-এর playbook: `captain/CAPTAIN_PROMPT.md`
+- Default brief: `captain/WORKER_PATCH_BRIEF_TEMPLATE.md`
+- ভরা patch example: `captain/examples/WORKER_PATCH_example.md`
+- Auth troubleshooting: `NEXT_TIME_BANGLA.md`
 
-| ফাইল | কী | কে পড়ে |
-|---|---|---|
-| `CAPTAIN_START_PROMPT.md` | প্রথম paste (১০ লাইন) | Captain-কে তুমি paste করো |
-| `captain/CAPTAIN_PROMPT.md` | Captain-এর পুরো playbook | Captain নিজে পড়ে |
-| `captain/WORKER_BRIEF_TEMPLATE.md` | brief template | Captain ভরে worker-কে দেয় |
-| `captain/examples/*.md` | ভরা ৩টা brief (A/B/C) | দৃষ্টান্ত, repo-তেই থাকে |
-| `captain/HOW_TO_START_BN.md` | এই ফাইল | তোমার জন্য |
-
-## নতুন session শুরু হলেও যা লাগবে না
-
-- কিছু ইত্যাদি মনে রাখতে হবে না — `agent-captain-kit/` ফোল্ডারটা workspace-এ থেকে যায়।
-- GitHub token নিজে লাগবে না — Captain আগে থেকেই pair করা থাকে
-  (`/home/user/agent-bootstrap/secrets/gh_token.txt`, ~৮ ঘণ্টা, auto-refresh)।
-- নতুন worker চ্যাট করলে **পুরোনো কিছু** লাগে না — শুধু তার brief টা।
-
-## যদি খুব দ্রুত দরকার হয় (Short version)
-
-পুরো playbook paste করার দরকার নেই — উপরের ১০ লাইনের version টাই যথেষ্ট।
-একেবারে minimum চাইলে এটুকু দিলেও Captain নিজে repo থেকে বাকিটা পড়ে নেবে:
-
-```text
-তুমি আমার Captain (main agent)। আমি Keshab1997 — তুমিই আমার সাথে কথা বলবে।
-
-নিয়ম: কাজ ভেঙে worker A/B/C-কে brief দেবে; ওরা নিজের branch-এ push করবে, main-এ না;
-তুমি diff পড়ে check-fix-merge করে main-এ push করবে; tag/release/secret কখনো নিজে করবে না —
-আমাকে জিজ্ঞেস করবে। worker-দের ভারী check চালাবি না, শুধু preflight.py / pytest -q।
-
-প্রথমে: /home/user/agent-bootstrap clone করে pair হও (ALREADY CONNECTED হলে skip),
-তারপর আমাকে জিজ্ঞেস করো কী কাজ। প্রতিটা worker brief-এ Goal, কোন ফাইল ওর,
-কার কোনটা DO NOT TOUCH, কোন check, আর report format — সব লিখে দেবে।
-```
+নতুন server, PAT, private key বা repository setting লাগবে না। শুধু বর্তমান
+bootstrap code ও playbook ব্যবহার করলেই এই workflow পাওয়া যাবে।

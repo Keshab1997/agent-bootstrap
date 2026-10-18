@@ -1,44 +1,48 @@
-# captain/ — multi-agent playbook (one captain, several workers)
+# captain/ — এক Captain, কম authorization
 
-Keshab-এর setup: **একজন agent = Captain** (তোমার সাথে শুধু সে-ই কথা বলে), আর তার হাতে লেখা
-brief নিয়ে **worker A/B/C** — নিজের sandbox, নিজের branch, `main` কখনো ছোঁয় না।
+**Captain-ই GitHub login ও publish করবে। Public repo-র workers default-এ login
+ছাড়া কাজ করে `.patch` দেবে।** একই Captain workspace-এর token/refresh রাখা থাকলে
+প্রতি worker-এর জন্য আলাদা approval লাগে না।
 
+```text
+Keshab → Captain → frozen brief A/B/C → workers (local branches, no push)
+            ↑                              ↓
+            └──── patch + report attachment ┘
+            ↓
+       review → check → commit → main push → report
 ```
-Keshab ──► CAPTAIN ──brief A/B/C──► workers (agent/A|B|C/<slug> branches)
-              │                              │
-              └──◄──── review → fix → merge → main ──► report ──► Keshab
-```
 
-## শুরু করো এভাবে
+## শুরু
 
-1. নতুন agent chat-এ **`CAPTAIN_START_PROMPT.md`** (repo root-এ) পুরোটা paste করো।
-   Captain নিজে pair হবে, clone করবে, আর এই ফোল্ডারের playbook পড়ে নেবে।
-2. তাকে বলো কী কাজ চাও (কোন repo, কী সমস্যা)।
-3. সে **`WORKER_BRIEF_TEMPLATE.md`** ভরে A/B/C brief লিখে দেবে — প্রতিটা **আলাদা**
-   worker chat-এ paste করো।
-4. Worker-রা `AGENT X DONE` ব্লক ফেরত দেবে → Captain-কে paste করো (বা সে নিজেই
-   `git fetch` করে দেখে নেবে)।
-5. Captain check → fix → merge → `main` push → ৫ লাইনের report।
+1. Captain chat-এ root-এর `CAPTAIN_START_PROMPT.md` দিন। সে saved session
+   restore করবে; সত্যিই দরকার হলে তবেই approval চাইবে।
+2. Repo ও কাজ বলুন। Captain ফাইল ভাগ করে **patch briefs** লিখবে।
+3. Brief-গুলো আলাদা worker chat-এ দিন। Public repo-তে authorization লাগবে না।
+4. Workers-এর **আসল `.patch` ফাইল report-সহ Captain চ্যাটে attach করুন**। শুধু
+   অন্য চ্যাটের local path দিলে Captain পড়তে পারবে না।
+5. Captain diff review → cheap check → `main` push → পাঁচ লাইনের report।
 
-## এই ফোল্ডারের ফাইল
+## কোন mode কখন
 
-| ফাইল | কী |
+| Mode | ব্যবহার | Worker approval |
+|---|---|---|
+| **Patch — default** | Public repo, file attachment দিয়ে handoff সম্ভব | নেই; worker push করবে না |
+| Branch — explicit opt-in | Private repo বা patch handoff অসুবিধাজনক | নিজস্ব pairing লাগতে পারে; Captain আগে জানাবে |
+
+Private source-কে public করা বা Captain-এর `secrets/` worker-কে দেওয়া যাবে না।
+Patch handoff কম browser approval-এর বিনিময়ে file attachment-এর এক ধাপ যোগ করে।
+একদম নতুন Captain workspace-এ প্রথম approval এখনও লাগতে পারে।
+
+## ফাইল
+
+| ফাইল | কাজ |
 |---|---|
-| `CAPTAIN_PROMPT.md` | Captain-এর পুরো playbook — hard rules, batch loop, review checklist, merge discipline, report format |
-| `WORKER_BRIEF_TEMPLATE.md` | brief template — Captain এটা ভরে worker-কে দেয় |
-| `examples/WORKER_A_example.md` | ভরা উদাহরণ — Dart edit + একটা test file (`docify`) |
-| `examples/WORKER_B_example.md` | ভরা উদাহরণ — একই repo, অন্য ফাইল, একই batch |
-| `examples/WORKER_C_example.md` | ভরা উদাহরণ — আলাদা repo (`flutter-builder`) → conflict অসম্ভব |
-| `HOW_TO_START_BN.md` | বাংলায় ধাপে ধাপে — কী লিখবে, কোন ক্রমে |
+| `CAPTAIN_PROMPT.md` | Captain-এর নিয়ম, file split, দুই mode-এর review/merge, report |
+| `WORKER_PATCH_BRIEF_TEMPLATE.md` | **Default public-repo brief**, no login/no push |
+| `examples/WORKER_PATCH_example.md` | সম্পূর্ণ ভরা patch-mode উদাহরণ |
+| `WORKER_BRIEF_TEMPLATE.md` | Explicit authenticated branch/push alternative |
+| `examples/WORKER_A_example.md`, `WORKER_B_example.md`, `WORKER_C_example.md` | Branch-mode উদাহরণ; default নয় |
+| `HOW_TO_START_BN.md` | মানুষের জন্য ধাপে ধাপে নির্দেশনা |
 
-## যা কখনো Captain próprio করবে না
-
-`v*` tag / release · repository secrets / settings · history rewrite · **`main`-এর বাইরে
-কিছু merge না পড়ে** · worker-দের জন্য ভারী check (শুধু `preflight.py` বা `pytest -q`)।
-
-## নোট
-
-- প্রতিটা worker আলাদা sandbox → আলাদা pairing (এক approve করে)। `secrets/` কখনো
-  এক agent থেকে আরেকজনকে কপি করো না — refresh token single-use।
-- এই ফোল্ডারের ফাইলগুলো `agent-bootstrap`-এর সাথে sync থাকে; উৎস কপি (copy-পেজ সহ)
-  Keshab-এর workspace-এ `agent-captain-kit/`-তেও আছে।
+Captain tags/releases, secrets/settings/workflows বদলাবে না অনুমতি ছাড়া।
+কোনো patch/branch diff না পড়ে merge করবে না। কোনো worker CI dispatch করবে না।

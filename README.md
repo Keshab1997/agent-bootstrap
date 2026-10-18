@@ -27,12 +27,15 @@ curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/set
 
 ## For AI agents — read this first
 
-You are expected to do the following. It is the whole job.
+These steps are for a captain or standalone agent that needs authenticated
+access. **Public-repo patch workers skip pairing** and follow their no-login
+brief instead.
 
-1. **Run** `python3 gh_app.py connect`. It self-checks first: if a valid token
-   is already stored it prints `ALREADY CONNECTED -- device flow skipped` and
-   exits. In that case there is nothing to do — **do not ask the human to
-   authorize again.** (Genuinely dead token? `connect --force`.)
+1. **Run** `python3 gh_app.py connect`. It first reuses a working token, then
+   tries the saved refresh token if access expired. Successful recovery prints
+   `ALREADY CONNECTED -- device flow skipped`: **ask the human nothing**.
+   A network/rate-limit/server error means retry, not a new approval. Only an
+   absent session or a definitely rejected refresh token leads to pairing.
 2. **Only if it printed a code**, tell the human, verbatim and prominently:
    > Open <https://github.com/login/device> and enter the code **XXXX-XXXX**
 3. **Wait.** The script polls every 5 s and finishes on its own. Do not ask for
@@ -54,34 +57,48 @@ You are expected to do the following. It is the whole job.
 
 - Never print a full token to logs or chat. `gh_app.py` masks it for you.
 - Never commit anything under `secrets/` (already git-ignored).
-- Tokens last **8 hours**. Every `gh_app.py` command auto-refreshes when fewer
-  than 5 minutes remain, so just keep using it.
-- If `status` reports `HTTP 401` (verdict `NOT WORKING`), run `connect` again.
-  Re-pairing is normal and costs the human one click — but check first: a
-  working session must never be asked to authorize twice.
-- Approval arriving after your turn ended? The code stays valid ~15 min — resume
-  instead of starting over: `python3 device_pair.py poll 60`
-  (`device_pair.py start` saves the code in `secrets/device_state.json`).
-- One pair per sandbox: clone into `/home/user/agent-bootstrap`, because only
-  `/home/user` survives between turns. A clone in `/tmp` loses its token and
-  looks unpaired every time.
+- Access tokens last **8 hours**. API commands refresh near expiry; `connect`
+  and `status` also recover an already-expired access token from the saved
+  refresh token. Do not use `--force` merely because eight hours passed.
+- `status` never starts a device flow. `PAIRED` means API authentication worked;
+  `UNCONFIRMED` means retry later, not re-authorize; `NOT PAIRED` means run
+  `connect`. Exit 1 alone is **not** proof that credentials are dead.
+- `connect`, `connect --show-only`, and `device_pair.py start` share one pending
+  code in `secrets/device_state.json`, saved **before** it is displayed. After
+  an interrupted turn, use `python3 device_pair.py poll 60` or rerun `connect`.
+  Both reuse the same unexpired code; neither extends its original ~15-minute
+  lifetime. A bounded poll timeout keeps the code and GitHub's retry interval.
+- One saved session per sandbox: keep the clone at `/home/user/agent-bootstrap`.
+  Files here survive turns **in this workspace**; an entirely new workspace
+  has no credentials and still needs its own approval. Never copy `secrets/`
+  to another agent to work around this.
+
+**Already have an older clone?** From a clean checkout, run `git pull --ff-only`
+inside `/home/user/agent-bootstrap` once, then `python3 gh_app.py connect`.
+Keep local edits if the update refuses; do not reset the repo or delete secrets.
+No new PAT, private key, server or repository setting is needed for this update.
 
 ---
 
-## Multiple agents — one captain, three workers
+## Multiple agents — only the captain logs in by default
 
-For work worth parallelising, hand the agent **`CAPTAIN_START_PROMPT.md`** instead:
-it pairs, then reads [`captain/CAPTAIN_PROMPT.md`](captain/CAPTAIN_PROMPT.md) from
-this clone. The captain splits the job into per-file worker briefs
-([`captain/WORKER_BRIEF_TEMPLATE.md`](captain/WORKER_BRIEF_TEMPLATE.md), worked
-examples in [`captain/examples/`](captain/examples/)), each worker pushes its own
-`agent/A|B|C/<slug>` branch, and the captain reviews → fixes → squash-merges →
-pushes `main`. Workers never touch `main`, and the captain never pushes a tag,
-release or secret. Bengali walk-through:
-[`captain/HOW_TO_START_BN.md`](captain/HOW_TO_START_BN.md).
+Start with [`CAPTAIN_START_PROMPT.md`](CAPTAIN_START_PROMPT.md). The captain
+restores access and reads [`captain/CAPTAIN_PROMPT.md`](captain/CAPTAIN_PROMPT.md).
+For a **verified public repo**, workers receive a frozen-base
+[`patch brief`](captain/WORKER_PATCH_BRIEF_TEMPLATE.md), clone without login,
+work on local branches and return `.patch` files plus checksums. **No worker
+OAuth approval or push.** Keshab attaches the actual files/reports to the
+captain's chat; the captain reviews → checks → integrates → pushes `main`.
+A path in another chat's sandbox is not a usable attachment.
 
-Because the playbook ships in this repository, the first paste stays ~10 lines
-instead of a whole prompt — and updating the playbook updates every future agent.
+Private repos or unsuitable attachment handoffs can use explicit authenticated
+[branch mode](captain/WORKER_BRIEF_TEMPLATE.md), with a separate worker pairing
+if needed. The captain explains that tradeoff first. No source is made public
+and no credentials are shared to avoid approval. An entirely new captain
+workspace still requires its first approval; this is not cross-sandbox SSO.
+
+Bengali walk-through: [`captain/HOW_TO_START_BN.md`](captain/HOW_TO_START_BN.md).
+The playbook ships in the repo, so future fresh clones receive the updated rules.
 
 ---
 
@@ -118,11 +135,12 @@ Full machine-readable details: [`app-meta.json`](app-meta.json)
 ## Commands
 
 ```bash
-python3 gh_app.py connect              # pair; self-skips if already paired
+python3 gh_app.py connect              # reuse -> refresh -> resume -> pair only if needed
 python3 gh_app.py connect --force      # pair again on purpose (new code)
-python3 gh_app.py status               # health + expiry; exit 0 only if paired
+python3 gh_app.py status               # check/recover; never opens a flow; exit 0 = paired
 python3 device_pair.py status          # is a device code already pending?
-python3 device_pair.py start           # get a code and save it (resumable)
+python3 gh_app.py connect --show-only  # save/reuse a code and exit (agent-friendly)
+python3 device_pair.py start           # same guard and saved code as connect --show-only
 python3 device_pair.py poll 60         # resume polling a saved code
 python3 gh_app.py whoami
 python3 gh_app.py repos --limit 20
@@ -200,8 +218,13 @@ push, PR, and run workflows.
 ## Optional: `vault.py` (not used by default)
 
 This repo ships with **no credentials**, which is the safest arrangement. If you
-ever want a "paste one line, get instant access, no human click" setup, use
-[`vault.py`](vault.py) to store a **Fine-Grained PAT** encrypted:
+use [`vault.py`](vault.py), it can store a **Fine-Grained PAT** encrypted. This
+is **not** a zero-secret login: each fresh workspace still needs the passphrase
+through a secure secret-delivery mechanism. Do not put that passphrase in a
+public repo, a worker brief or chat logs. This is not required for refresh/resume
+or the public-repo patch workflow.
+
+Example for a separately managed vault:
 
 ```bash
 python3 vault.py seal --set token --generate-passphrase     # prints a strong passphrase once
@@ -243,24 +266,24 @@ for cloning; `setup.sh` also works from raw URLs if you give it one.
 
 ## Why is it asking me to authorize *again*?
 
-Short answer: it shouldn't. Every known cause is handled in the code — if an
-agent still asks, one of these was skipped.
+A genuinely fresh sandbox has no saved identity. A preserved workspace should
+recover without another approval while its refresh token remains usable.
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| Code requested although the session is paired | agent ran `connect` without checking | `connect` now calls `/user` first and prints `ALREADY CONNECTED -- device flow skipped` |
-| Paired, but next turn asks again | clone lived outside `/home/user` (e.g. `/tmp`, `/var/tmp`), so `secrets/` was wiped | clone to `/home/user/agent-bootstrap`; `setup.sh` now defaults there |
-| Approved in the browser, still asked again | the polling process was reaped when the agent's turn ended | the approval landed *after* the turn — resume with `device_pair.py poll 60` (code is valid ~15 min) |
-| Re-authorize every ~8 h | the refresh token was thrown away | `device_pair.py` now stores the full payload; refresh tokens are 181-day |
-| Two agents in one workspace kick each other out | refresh tokens are single-use | rotation is serialised with a lock, and a failed refresh no longer means "re-pair" if the stored token still works |
-| Never re-paired although the token died | `status` used to exit 0 whenever a token *file* existed | `status` now exits 0 only when a real API call returns 200, so `status \|\| connect` works |
-
-Diagnose in one command:
+| Symptom | What now happens / what to do |
+|---|---|
+| Access token expired, refresh token still usable | `connect` and `status` refresh before considering another device code |
+| Turn ended before approval was collected | `connect` saved the code first; `device_pair.py poll 60` resumes that exact code |
+| Re-running the starter requests a second code | A live pending code is reused, including its original expiry and retry interval |
+| GitHub / network / rate limit is temporarily failing | No new pairing; retry later (`UNCONFIRMED` is not logout) |
+| Two processes try to refresh the same workspace | The second verifies the winner under the lock instead of rotating it again |
+| A worker asks for authorization on a public repo | Use the captain's default **patch brief**, not the opt-in branch/push brief |
+| An entirely new captain workspace asks for approval | Expected: no saved credentials are present; never copy another agent's refresh token |
+| Token or refresh was revoked, or refresh expired | One fresh device approval is necessary |
 
 ```bash
-python3 gh_app.py status          # verdict: PAIRED  or  verdict: NOT WORKING
-python3 device_pair.py status     # a device code already waiting for approval?
-python3 selftest.py               # offline regression test for all of the above
+python3 gh_app.py status          # checks/recoveries only; never opens a flow
+python3 device_pair.py status     # pending code, original remaining lifetime
+python3 selftest.py               # offline auth regressions; only fake credentials
 ```
 
 ---
@@ -271,9 +294,9 @@ python3 selftest.py               # offline regression test for all of the above
 |---|---|
 | Client ID | Public by design. Device flow needs no client secret for GitHub Apps. |
 | Device code | Short-lived (~15 min), single-use, and only becomes a token after human approval. |
-| Token at rest | `secrets/` with `chmod 600`, git-ignored. |
+| Token at rest | `secrets/`, git-ignored; token and pending-state files are atomically replaced with mode `0600`. |
 | Refresh tokens | Rotate on use, single-use, 181-day life — never share one between machines. Rotation is serialised by a lock in `secrets/`. |
-| Re-authorization | `connect` will not issue a code while the stored token still authenticates; `--force` is the only way past it. |
+| Re-authorization | `connect` reuses/refreshes the session, then reuses any pending code. Only explicit `--force` bypasses those guards. |
 | Killing access | `python3 gh_app.py revoke`, or GitHub → Settings → Applications → `keshab-flutter-assistant` → *Revoke access*. Revoking also invalidates every token issued to that installation. |
 | Least privilege | If an agent only needs one repo, narrow the App's repository selection to that repo instead of "all". |
 
@@ -292,7 +315,7 @@ agent-bootstrap/
 ├── vault.py               ← optional passphrase-encrypted token store
 ├── AGENT_START_PROMPT.md  ← hand this to a fresh agent session (one paste)
 ├── CAPTAIN_START_PROMPT.md ← same, for the captain of a multi-agent batch
-├── captain/               ← the multi-agent playbook (briefs, examples, BN guide)
+├── captain/               ← patch-first playbook, no-login/branch briefs, examples, BN guide
 ├── PROMPT-FOR-NEW-AGENT.txt ← same prompt as plain text
 ├── AGENT_PROMPT_COPY.html ← same prompt with a one-click copy button
 ├── RESUME.md              ← workspace resume guide (paths, traps, policies)

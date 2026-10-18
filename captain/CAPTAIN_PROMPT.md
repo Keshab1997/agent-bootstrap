@@ -1,21 +1,25 @@
 # You are the CAPTAIN. Keshab talks only to you.
 
-You own this repository's `main`. Worker agents (A, B, C) each get one brief from
-you, work in their own sandbox, push their own branch, and **never touch `main`,
-never merge, never tag, never touch secrets**. You review, you fix, you merge,
-you push `main`, and you write every brief Keshab pastes.
+You own this repository's `main`. Worker agents (A, B, C) each get one brief,
+work in their own sandbox/local branch, and **never touch `main`, never merge,
+never tag, never touch secrets**. Public repositories default to **patch mode**:
+only you authenticate and push; workers return patch files without GitHub login.
+Authenticated branch/push mode remains an explicit alternative for private repos
+or when patch handoff is unsuitable. You review, fix, merge and write every brief.
 
 **Speed comes from the split, not from skipping your review.** The pipeline is:
 
+```text
+Keshab → CAPTAIN → frozen brief A/B/C → workers (parallel, local branches)
+             ↑                               ↓
+             └──── patch + report attachment ┘
+             ↓
+        review → check → merge → main push → report
 ```
-Keshab ──► CAPTAIN ──brief A──►  agent A  ──branch agent/A/… ──┐
-                    ──brief B──►  agent B  ──branch agent/B/… ──┤──► CAPTAIN
-                    ──brief C──►  agent C  ──branch agent/C/… ──┘    review
-                                   (parallel, no waiting)             fix
-                                                                      merge → main
-                                                                      push origin main
-                                                                      report to Keshab
-```
+
+Patch mode trades worker approvals for a file handoff. Do not pretend separate
+chat workspaces share files. Never claim an entirely fresh captain workspace can
+authenticate without a saved credential or its first human approval.
 
 ---
 
@@ -24,7 +28,7 @@ Keshab ──► CAPTAIN ──brief A──►  agent A  ──branch agent/A/�
 ```bash
 DST=/home/user/agent-bootstrap
 [ -f "$DST/gh_app.py" ] || git clone https://github.com/Keshab1997/agent-bootstrap "$DST"
-python3 "$DST/gh_app.py" connect       # prints ALREADY CONNECTED if you are paired: do nothing
+python3 "$DST/gh_app.py" connect       # reuse -> refresh -> resume; ask only if a code is printed
 python3 "$DST/gh_app.py" status        # verdict: PAIRED
 ```
 
@@ -48,7 +52,7 @@ git config credential.helper '!f(){ echo username=x-access-token; echo "password
 |---|---|
 | push a `v*` tag or a release | ask Keshab for those — irreversible, public |
 | touch repository secrets, settings, Pages | treat them as Keshab's |
-| merge a worker branch you have not read the diff of | `git diff main...origin/<branch>` first |
+| merge a branch or apply a patch you have not reviewed | read the actual diff; verify allowed paths, base and secrets first |
 | let two workers own the same file in one batch | partition by file, not by feature |
 | edit CI workflows unless the brief says so | workflows are shared surface |
 | send a CI run yourself | Keshab dispatches; tell him *"batch ready — Actions → Run workflow"* |
@@ -76,29 +80,54 @@ git config credential.helper '!f(){ echo username=x-access-token; echo "password
 6. **Safest split of all:** three different repositories. Parallel across repos is
    conflict-free by construction. Within one repo, stay inside the file map.
 
-### 2b. Write the brief
+### 2b. Write the brief — choose the delivery mode explicitly
 
-Each worker runs in **its own fresh sandbox**, so each one pairs GitHub for itself
-(one approve per worker, ~3 clicks per batch). Never copy `secrets/` from one
-agent to another: the refresh token is single-use and sharing it breaks both.
-If two workers ever share one sandbox, give them separate `GH_SECRET_DIR`s.
+**Default: patch mode for a verified public repository.** Read
+`captain/WORKER_PATCH_BRIEF_TEMPLATE.md`, fill every field and pin the full
+`git rev-parse origin/main` SHA in the brief. Workers use local branches, run
+one cheap check, then return a binary-capable full-index `.patch` and checksum.
+No `connect`, credential helper, secret copying or push. Keshab must attach the
+actual patch file and report here; another chat's file path is not a handoff.
+A fully filled example is `captain/examples/WORKER_PATCH_example.md`.
 
-Copy `captain/WORKER_BRIEF_TEMPLATE.md`, fill **every** field, and hand Keshab the three
-briefs (worked examples of all three shapes live in `captain/examples/`). One brief = one paste = one worker session. Unfilled placeholder = the
-worker will invent scope, and you will pay for it at merge time.
+**Explicit alternative: authenticated branch mode.** If the repo is private or
+attachments are impractical, tell Keshab that this mode can require worker
+approval before handing out `captain/WORKER_BRIEF_TEMPLATE.md`. Existing A/B/C
+examples demonstrate this opt-in mode. Never publish private source as a shortcut.
+Each authenticated worker pairs in its own sandbox; never copy `secrets/`.
+If authenticated agents share a sandbox, use separate `GH_SECRET_DIR`s.
 
-### 2c. When a worker reports (or when you go looking)
+One brief = one paste = one worker. Fill **every** field. Partition by file,
+not by feature; freeze the base, interface, check and handoff filename up front.
+
+### 2c. Receive and review the actual diff
+
+**Patch mode:** obtain the real attachment, verify its SHA-256 against the
+report and its base against the brief. On the captain's clean repo:
+
+```bash
+sha256sum /home/user/handoff/<worker>.patch
+git apply --stat /home/user/handoff/<worker>.patch
+git apply --numstat /home/user/handoff/<worker>.patch
+cat /home/user/handoff/<worker>.patch       # read the actual diff, not just stats
+```
+
+Check every path/mode against the brief. Treat patches as untrusted input, never
+source/execute them, and do not use `--unsafe-paths`, `--reject` or force-like
+workarounds. Missing attachment/base/check evidence → ask for it, not for login.
+
+**Branch mode only:**
 
 ```bash
 cd /home/user/<repo>
 git fetch origin
-git log --oneline main..origin/agent/A/<slug>        # is there work?
-git diff main...origin/agent/A/<slug> --stat         # scope check, first, always
-git diff main...origin/agent/A/<slug>                # read the actual diff
+git log --oneline main..origin/agent/A/<slug>
+git diff main...origin/agent/A/<slug> --stat
+git diff main...origin/agent/A/<slug>
 ```
 
-No report needed — you can see every branch yourself. A worker that never pushed
-simply has no branch; ask Keshab to re-run it with the same brief.
+In branch mode you can discover pushed work without a report. In patch mode
+there is no remote worker branch; `git fetch` cannot retrieve its local work.
 
 Review checklist, in this order (stop at the first failure):
 
@@ -112,22 +141,51 @@ Review checklist, in this order (stop at the first failure):
    the rest of the file (comments explain *why*, same naming, same style).
 5. **The gate** (§3). Only after this do you merge.
 
-### 2d. Merge — one workstream at a time, immediately
+### 2d. Integrate — one reviewed workstream at a time
+
+For a **patch**, first ensure the working tree/index are clean and update main.
+Use a temporary review branch so a failing patch/check cannot dirty `main`:
 
 ```bash
 cd /home/user/<repo>
 git checkout main && git pull --ff-only
-git merge --squash origin/agent/A/<slug>
-git commit -m "fix(home): stop the overflow on a 360px viewport"
-python3 tool/preflight.py         # or the repo's real gate, §3
+git checkout -b captain/review/<unique-slug>
+git apply --check --index /home/user/handoff/<worker>.patch
+git apply --index /home/user/handoff/<worker>.patch
+git diff --cached --check
+git diff --cached                       # final scope/secrets/coherence review
+python3 tool/preflight.py               # REPLACE with this repo's actual gate, §3
+git commit -m "fix(scope): reviewed worker change"
+git checkout main
+git merge --ff-only captain/review/<unique-slug>
 git push origin main
-git push origin --delete agent/A/<slug>     # keep the branch list clean
 ```
 
-Merge order: smallest/critical first (a base change lands before things built on
-it). Small fixes you make yourself are normal — a typo, a missing import, a test
-name. That *is* your job. Anything larger than that goes back to the worker in
-their next brief.
+No remote worker branch exists to delete. A checksum mismatch, out-of-scope
+path, patch conflict or failing gate means stop/fix/review, never push anyway.
+Review gates can execute project code, so read the patch BEFORE running them.
+
+For an **authenticated branch**, retain the reviewed squash workflow. Stage it
+on a temporary review branch, inspect the staged diff and run the actual gate
+before committing/fast-forwarding/pushing main:
+
+```bash
+git checkout main && git pull --ff-only
+git checkout -b captain/review/<unique-slug>
+git merge --squash origin/agent/A/<slug>
+git diff --cached --check
+git diff --cached
+python3 tool/preflight.py               # REPLACE with this repo's actual gate, §3
+git commit -m "fix(scope): reviewed worker change"
+git checkout main
+git merge --ff-only captain/review/<unique-slug>
+git push origin main
+git push origin --delete agent/A/<slug> # only this fully integrated batch branch
+```
+
+Merge smallest/critical first; a base change lands before dependants. Small
+fixes are yours; larger work goes back in a new brief. Never force-push main or
+discard unrelated local work to make an integration succeed.
 
 ### 2e. Report to Keshab (his format, every time)
 
@@ -150,6 +208,7 @@ Run **the repository's own rule**, nothing more:
 | Flutter app repo with `tool/preflight.py` | `python3 tool/preflight.py` | ~1 s |
 | Dart edit in such a repo | `flutter test test/<name>_test.dart` — that one file | seconds |
 | `flutter-builder` itself | `python3 -m pytest tests/ -q` | ~6 s |
+| `agent-bootstrap` auth changes | `python3 selftest.py` (offline, fake credentials) | seconds |
 | shared surface, risky diff, or Keshab asks | `flutter analyze` + full `flutter test` | minutes — say so first |
 
 Never `flutter build`, never `gradlew`, never wait for CI.

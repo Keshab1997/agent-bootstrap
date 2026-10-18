@@ -1,4 +1,8 @@
-# WORKER BRIEF TEMPLATE — the captain fills this, Keshab pastes it, the worker runs it
+# BRANCH/PUSH TEMPLATE — explicit opt-in, not the public-repo default
+#
+# Public repos normally use WORKER_PATCH_BRIEF_TEMPLATE.md (no worker login).
+# Use this authenticated alternative only after the captain explains why a
+# private repo / unsuitable patch handoff makes a worker approval necessary.
 #
 # Rules for the captain:
 #   * every field filled, no placeholders left, no essays
@@ -23,11 +27,11 @@ DST=/home/user/agent-bootstrap
 python3 "$DST/gh_app.py" connect     # if it says ALREADY CONNECTED: nothing to do
 ```
 
-If it prints a code like `XXXX-XXXX`, show it to Keshab as a headline
-(*"Open https://github.com/login/device and enter XXXX-XXXX"*) and wait for his
-approval. Never ask him for a token. If your turn ends before he approves:
-`python3 "$DST/device_pair.py" start` then `python3 "$DST/device_pair.py" poll 60`
-— the code stays valid ~15 min, do **not** take a new one.
+connect tries saved access/refresh first. A transient error means retry, not a
+new approval. Only if it prints a code, show *"Open https://github.com/login/device
+and enter XXXX-XXXX"* and wait for approval. Never ask for a token. If the turn
+ends, use `python3 "$DST/device_pair.py" poll 60` — connect already saved the same
+code. No `start` step and no new code while this one is valid.
 
 ## 1. Your task
 
