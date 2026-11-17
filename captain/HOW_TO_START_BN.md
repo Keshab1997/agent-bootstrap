@@ -1,94 +1,46 @@
-# 🚀 Captain শুরু করুন — file handoff নয়, সরাসরি branch push
+# একই worker chat-এ পরপর কাজ — Captain Fast Lane
 
-> **এক লাইন:** Captain prompt → কাজ বলুন → workers-কে brief → তারা branch push
-> করবে → Captain নিজেই fetch/review/merge করবে।
+**কাজ শেষ = branch checkpoint, PR merge নয়।** Arena-তে repo-linked chat-এ একটাই PR; সেই PR **merge বা close** হলে ওই chat আর GitHub-এ push করতে পারে না। Fast Lane এই সীমা বদলায় না—একই chat-এ একাধিক কাজের checkpoint নেওয়া যায়, তারপর batch শেষ হলে PR নিয়ে সিদ্ধান্ত হয়। [Arena-র নির্দেশনা](https://help.arena.ai/articles/5432423882-how-to-use-agent-mode)
 
-সম্ভব হলে একই Captain এবং A/B/C worker chats/workspaces ব্যবহার চালিয়ে যান।
-প্রতিটির saved login/refresh সেখানেই থাকবে। আলাদা নতুন workspace-এ প্রথম
-approval লাগতে পারে; শুধু chat-এর নাম এক রাখলে credentials স্থানান্তর হয় না।
+## ১. Captain-কে কী বলবেন
 
-## ১. Captain চ্যাট
-
-Root-এর [`CAPTAIN_START_PROMPT.md`](../CAPTAIN_START_PROMPT.md) দিন। সে repo
-clone করে playbook পড়বে এবং saved GitHub session restore করবে।
-
-- `ALREADY CONNECTED` বললে কিছুই করতে হবে না।
-- Access token expire হলে আগে saved refresh চেষ্টা করবে।
-- সত্যিই code দেখালেই https://github.com/login/device-এ approve করুন।
-- Turn শেষ হলে নতুন code নয়: `python3 device_pair.py poll 60` দিয়ে একইটি resume।
-- Network error হলে retry; নতুন approval ওই সমস্যা ঠিক করবে না।
-
-শেষে সে বলবে: **Captain ready — কাজ বলো।** এই চ্যাটে ইতিমধ্যে setup থাকলে
-সোজা কাজের কথাই বলুন, আবার starter paste করার দরকার নেই।
-
-## ২. কাজ বলুন
-
-উদাহরণ:
+Captain চালু থাকলে আবার starter দিতে হবে না। নতুন হলে [`CAPTAIN_START_PROMPT.md`](../CAPTAIN_START_PROMPT.md) দিন। নিজের saved login কাজ করলে Captain approval চাইবে না। সত্যিই code দেখালে শুধু GitHub-এর [device page](https://github.com/login/device)-এ approve করুন। Turn শেষ হলে একই code `device_pair.py poll 60` দিয়ে resume হয়।
 
 ```text
-Batch 1 বানাও:
-1) docify — home screen 360px ফোনে overflow ঠিক করতে হবে
-2) quizbaaz — results screen-এ tap feedback চাই
-3) flutter-builder — README-র বাংলা অংশে বানান ঠিক করতে হবে
-
-A/B/C-র branch-push briefs দাও; আগের worker chats-গুলোতেই কাজ দেব।
+<repo>-তে <কাজগুলো> ভাগ করে A/B/C-র Fast Lane briefs দাও।
+একই worker chats রাখব; এখন কোনো worker PR merge/close নয়।
 ```
 
-Captain নতুন `WORKER_BRIEF_TEMPLATE.md` দিয়ে goal, allowed files, interface
-ও check লিখবে। Arena chat-এর branch জানা থাকলে ঠিক সেই নাম, না জানলে `auto`।
-`agent/<letter>/<slug>` আলাদা fallback, শুধু standalone Git-এর জন্য। এক ফাইল
-বা এক branch দুই worker পাবে না।
+Captain goal, files, interface ও check আলাদা করে ছোট brief দেবে। এক worker-কে একসঙ্গে একটি কাজ, দুই worker-কে একই file নয়।
 
-## ৩. Worker চ্যাটগুলো
+## ২. কোন worker chat ব্যবহার করবেন
 
-A/B/C brief-গুলো সংশ্লিষ্ট worker chat-এ দিন। Worker নিজের saved login restore
-করবে। একেবারে নতুন worker হলে প্রথমবার code approve করতে হতে পারে।
+| পরিস্থিতি | কী করবেন |
+|---|---|
+| চালু repo-linked chat | একই `arena/*` branch রাখুন। Checkpoint push হলে PR খুলবেন না; আগেই খোলা থাকলে সেটি merge বা close করবেন না। |
+| ঘন ঘন নতুন `main` থেকে কাজ দরকার | **Repo attach না করে** সাধারণ Agent Mode chat রাখুন। Worker নিজের অনুমোদিত access-এ task-পিছু নতুন `agent/A/<task>` branch বানায়। আলাদা GitHub PR/merge worker chat-এর অংশ নয়। |
+| Linked PR আগেই merge/close, বা chat অচল | পুরোনো chat-এ নতুন কাজ নয়। Captain-এর ছোট handoff দিয়ে fresh chat। |
 
-Arena-linked chat হলে worker সেখানে থাকা `arena/*` branch-এই কাজ করবে। শুধু
-brief-এর fallback নাম আলাদা বলে branch switch বা নতুন approval চাইবে না।
-কাজ ও check শেষে আসল branch push করবে—`main` নয়। অসমাপ্ত কাজ overwrite/reset
-করবে না। Push verify হলে রিপোর্ট দেবে:
+পুরোনো কাজ মাঝপথে থাকলে সেটার branch, base ও check বদলাবেন না। নতুন runner শুরু করার জন্য ওই edits reset করার দরকার নেই।
+
+## ৩. প্রতি কাজের পর Captain-কে রিপোর্ট দিন
+
+Worker `AGENT A PUSHED` বললে পুরো ছোট block দিন: repo, task, branch, `base_sha`, pushed `sha`, files, check। **কোনো app ফাইল download/upload করতে হবে না।** `BLOCKED` হলে আসল সমস্যা দিন; সেটা push নয়। Captain GitHub থেকে ওই range যাচাই করে review করবে।
 
 ```text
-AGENT A PUSHED
-branch: <আসল Arena বা standalone branch>
-base_sha: <কাজ শুরুর আগের পূর্ণ SHA>
-sha: <আসল pushed commit-এর পূর্ণ SHA>
-files: <আসল পরিবর্তিত ফাইল>
-check: <নির্ধারিত check এবং আসল ফল>
-changed: <পরিবর্তনের সারাংশ>
-not touched: <বাদ রাখা অংশ>
-blocked: <none বা আসল সমস্যা>
+A-এর checkpoint যাচাই করো। ঠিক থাকলে একই A chat-এ দেওয়ার পরের brief দাও।
 ```
 
-## ৪. Captain-কে শুধু জানান
+Captain পরের brief-এ আগের verified SHA বসাবে। Worker-এর branch-এ দরকারি upstream change না থাকলে Captain নতুন base থেকে কাজ দেবে; পুরোনো branch reset করবে না। Flutter test দরকার হলে brief-এ সঠিক version pin ও test file থাকবে; lockfile বদলে test পাশ করা চলবে না।
+
+## ৪. Batch সত্যিই শেষ হলে
 
 ```text
-A/B/C push করেছে — fetch করে diff দেখে merge করো।
+Finalize batch <id> — কী land হয়েছে, কী বাকি, আর PR দরকার কি না দেখাও।
 ```
 
-Captain আগে থেকেই branch ও base না জানলে report-এর `branch`, `base_sha`, `sha`
-লাইনগুলো paste করুন; **কোনো ফাইল download বা attach করতে হবে না**। `AGENT A BLOCKED`
-মানে handoff হয়নি। পুরোনো brief-এর branch mismatch হলে একই chat-এ নিশ্চিত করুন
-যে বর্তমান `arena/*` branch-ই task branch; file list ও check একই থাকবে।
+Captain আগে সব checkpoint ও diff দেখবে। PR লাগলে clean Captain review branch অগ্রাধিকার পাবে। Linked worker PR merge/close করলে সেটি **শেষ ধাপ**—বাকি local কাজ safe না হওয়া পর্যন্ত নয়। নতুন chat দরকার হলে Captain আগের checkpoint ও পরের goal মিলে ছোট handoff দেবে। Manual CI এখনও আপনার সিদ্ধান্ত।
 
-## ৫. Review ও publish
+**Credentials:** নতুন standalone workspace-এ নিজের প্রথম approval লাগতে পারে। Saved refresh থাকলে expiry-তে আবার browser খুলতে হয় না। Token, refresh token বা 2FA code কখনো chat/brief-এ দেবেন না। এক worker-এর token আরেক worker-কে দেবেন না।
 
-Captain ওই task-এর `base_sha` থেকে pushed `sha` পর্যন্ত diff পড়বে, scope/secrets
-যাচাই করবে, review branch-এ check চালাবে, তারপর `main`-এ integrate/push করবে।
-Arena chat-এর branch delete করবে না।
-কোনো tag/release/secret/settings/workflow বদলানোর আগে অনুমতি নেবে।
-
-## Authorization সম্পর্কে পরিষ্কার কথা
-
-- একই workspace-এ valid saved refresh থাকলে সাধারণ access-token expiry-তে
-  browser খুলতে হবে না। একেবারে নতুন workspace বা revoked/lost credentials
-  হলে আবার approval লাগতে পারে।
-- Authenticator app-এর ৬-digit GitHub code হলো account login-এর **2FA**;
-  agent-এর `XXXX-XXXX` device code হলো app-access request। একটির বদলে অন্যটি
-  চলে না। GitHub-এর নিজের login পেজে চাইলে শুধু সেখানেই 2FA code দিন।
-- Token, refresh token, authenticator seed বা recovery codes chat/brief-এ দেবেন
-  না। এক agent-এর credentials আরেকজনকে কপি করবেন না।
-
-দরকারি গাইড: [`NEXT_TIME_BANGLA.md`](../NEXT_TIME_BANGLA.md)। নতুন server,
-PAT/private key বা repository setting লাগবে না এই branch-push workflow-এর জন্য।
+আরও: [Fast Lane commands](FASTLANE.md) · [নতুন session-এ login](../NEXT_TIME_BANGLA.md)

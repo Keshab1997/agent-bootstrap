@@ -54,18 +54,16 @@ python3 /home/user/agent-bootstrap/device_pair.py poll 60
 
 ## Workers: একই চ্যাট ব্যবহার, সরাসরি branch push
 
-Captain A/B/C-কে brief দেবে। সম্ভব হলে প্রত্যেক worker-এর একই চ্যাট/workspace
-বারবার ব্যবহার করুন। প্রথমবার approval লাগতে পারে; পরের batch-এ saved login
-ও refresh reuse হবে।
+Captain [Fast Lane briefs](captain/WORKER_BRIEF_TEMPLATE.md) দেবে। একেক কাজ
+শেষ হলে worker **branch checkpoint** push করবে। Captain-কে পুরো `PUSHED`
+report দিন; ফাইল download/upload নয়। পরের কাজ একই chat-এ দেওয়া যাবে যদি
+চালু `arena/*` branch-এর সর্বশেষ SHA Captain যাচাই করে এবং সেই base-এ কাজটি করা যায়।
 
-Arena-linked worker chat যে `arena/*` branch-এ খোলা, worker সেটাই push করবে।
-`agent/<letter>/<slug>` শুধু standalone Git-এর fallback—Arena branch বদলানোর
-দরকার নেই। Captain-কে `branch`, `base_sha`, pushed `sha` দিন; কোনো ফাইল
-upload/download লাগবে না। Captain ওই task-এর diff দেখে `main`-এ integrate করবে।
-
-Private repo-তেও worker-এর নিজস্ব অনুমোদিত access ব্যবহার হবে। Token কখনো
-এক agent থেকে অন্যজনকে কপি হবে না। নতুন workspace বা revoked/lost credentials
-হলে আবার approval লাগতে পারে।
+**Repo-linked chat-এ PR merge বা close করলে আবার push করা যায় না।** PR-এর
+সিদ্ধান্ত batch-এর শেষে। `main` থেকে ঘন ঘন fresh task চাইলে repo attach না করে
+ordinary Agent Mode chat-এ standalone lane নিন। সেখানে task-পিছু নতুন
+`agent/<letter>/<task>` branch, chat-পিছু নিজস্ব saved login। Fresh workspace-এ
+approval লাগতে পারে। [ধাপে ধাপে ব্যবহার](captain/HOW_TO_START_BN.md)।
 
 ## Authenticator-এর GitHub code দিলে কি হবে?
 

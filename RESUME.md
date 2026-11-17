@@ -1,7 +1,7 @@
 # RESUME — পরের সেশনে শুধু এই ফাইলটা পড়লেই হবে
 
 Docify / GitHub workspace à la 2026-10-03. Only `~/` (i.e. `/home/user`) persists
-between sessions — everything else is rebuilt in seconds from what is written here.
+within a workspace, subject to snapshot limits. Fresh chats do not inherit local files.
 
 ## What is where (all push-ready)
 
@@ -18,9 +18,12 @@ Give it the copy-paste block in **`AGENT_START_PROMPT.md`** — it is the whole
 onboarding (pairing, Flutter SDK, check policy, CI-is-manual, sandbox traps)
 in one paste. This RESUME.md is the longer version for an agent already inside
 the workspace. For a Captain batch, refresh `agent-bootstrap` from `origin/main`
-without discarding local work, then use `captain/WORKER_BRIEF_TEMPLATE.md`. An
-Arena-linked worker keeps its own `arena/*` branch, never pushes `main`, and
-reports the actual branch and both task SHAs.
+without discarding local work, then use [Fast Lane](captain/FASTLANE.md) and the
+[compact brief](captain/WORKER_BRIEF_TEMPLATE.md). An active linked worker keeps
+its own `arena/*` branch and checkpoints tasks. Use the last verified tip as the
+next base once the Captain has reviewed it. A linked PR merge/close is terminal;
+use the handoff in Fast Lane for a fresh chat. Do not pair or re-clone to revive
+that linked chat. Resume an in-flight manual brief without changing its base.
 
 ## Check policy (agent pack v1.13.1) — do not backslide
 
@@ -29,14 +32,14 @@ reports the actual branch and both task SHAs.
 - **`flutter analyze` / full `flutter test`:** shared surfaces, risky diffs, or
   when Keshab asks. Never "just to be sure" after a small edit.
 - **Never** `flutter build apk|aab|web` locally to "check".
-- **CI is manual everywhere** — a push starts nothing. Keshab dispatches
-  *Flutter CI* once per batch (`python3 tool/ci_watch.py` reads the result).
+- **Flutter CI dispatch is manual** — a push may still start configured previews
+  or checks. Keshab dispatches *Flutter CI* when ready (`python3 tool/ci_watch.py` reads the result).
 
 ## Environment quirks (learned the slow way)
 
-- `/var/tmp`, `/tmp`, `~/.cache` are **wiped between turns** (snapshots exclude
-  `.cache`). Flutter SDK must be reinstalled when Dart work is needed (~50 s),
-  root inside the workspace or `/var/tmp`:
+- `/var/tmp`, `/tmp`, and `~/.cache` are not part of the saved snapshot. Fast
+  Lane checks use the pinned SDK and locked packages automatically. Only for
+  manual work outside the lane, follow the target repo’s Flutter setup, e.g.:
 
   ```bash
   bash <(curl -fsSL https://raw.githubusercontent.com/Keshab1997/flutter-bootstrap/main/setup.sh) \

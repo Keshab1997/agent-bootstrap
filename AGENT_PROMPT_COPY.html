@@ -64,12 +64,13 @@ the point**: never wait on CI, never run a check the change does not need.
 
 ## 0. Check your role and current branch first
 
-If you were given a Captain&#x27;s A/B/C brief, follow that brief for the branch,
-files, checks and push. The rest of this prompt&#x27;s direct-to-main defaults are
-for standalone work explicitly assigned to `main`, **not workers**. In a repo
-attached to Arena, use the existing `arena/*` branch for that task; do not
-switch to a made-up `agent/...` name or to `main`. Reuse the workspace&#x27;s Git
-access when it works; an Arena branch name is not a reason to pair again.
+If you were given a Captain&#x27;s A/B/C brief, use `captain/FASTLANE.md` and the
+brief for the branch, scope, checks, and push. The remaining direct-to-main
+instructions are only for standalone work expressly assigned to `main`.
+An active linked worker checkpoints its real `arena/*` branch without merging
+or closing its PR; doing either ends pushes from that chat. Standalone lane
+workers (no repo attached) use a fresh `agent/&lt;letter&gt;/&lt;task&gt;` per task. Do not
+start pairing just because a linked branch name differs from the brief.
 
 ## 1. Restore GitHub access — approve only when recovery is not possible
 
@@ -108,7 +109,7 @@ python3 &quot;$DST/gh_app.py&quot; connect   # reuse token -&gt; refresh -&gt; r
   Reuse each worker&#x27;s own workspace/login across batches; never share tokens.
   Workers push their branches and the captain fetches them; no file handoff.
 
-## 2. Flutter SDK — only when Dart work is coming (~50 s; skip for docs/YAML)
+## 2. Flutter SDK — only for Dart work (Fast Lane runs its own pinned gate)
 
 ```bash
 bash &lt;(curl -fsSL https://raw.githubusercontent.com/Keshab1997/flutter-bootstrap/main/setup.sh) \
@@ -116,9 +117,9 @@ bash &lt;(curl -fsSL https://raw.githubusercontent.com/Keshab1997/flutter-bootst
 export PATH=/var/tmp/flutter/bin:$PATH PUB_CACHE=/var/tmp/pub-cache
 ```
 
-Sandbox fact: only `/home/user` survives between tool calls; `/var/tmp` and
-`~/.cache` are wiped between turns. A 50-second reinstall is normal — not a
-problem to solve.
+Use the repo’s compatible SDK version and keep checked-in lockfiles unchanged.
+`/var/tmp` and `~/.cache` are not in the saved workspace snapshot; reuse a warm
+SDK when present, but do not rely on it surviving a fresh sandbox.
 
 ## 3. Get the repo — and obey its law
 
@@ -201,14 +202,12 @@ worker reports `PUSHED`, actual branch, `base_sha`, pushed `sha`, and checks, or
     </div>
     <textarea id="shortBox" readonly spellcheck="false">(চ্যাটে দ্রুত paste করার জন্য)
 
-Clone Keshab1997/agent-bootstrap → **`/home/user/agent-bootstrap`** → আমারApproval
-দরকার হলে code দেখাও, নইলে `ALREADY CONNECTED` পেলে নতুন করে authorize চেয়ো না।
-Dart work শুরু করলে Flutter SDK (flutter-bootstrap,
-`/var/tmp/flutter`)। তারপর যে repo বলব তার `AGENTS.md` পড়ে সেটাই follow করো:
-সব change-এ `preflight.py`; Dart edit-এ শুধু সংশ্লিষ্ট test ফাইল; `analyze` +
-full test শুধু দরকারে বা আমি বললে। Captain brief থাকলে নিজের attach করা
-`arena/*` branch বা standalone fallback-এই push করো, `main`-এ নয়। সরাসরি
-`main` শুধু সেটার জন্য আলাদা কাজ দিলে। **CI-র জন্য অপেক্ষা কোরো না** — CI আমি চালাবো।</textarea>
+Clone Keshab1997/agent-bootstrap → **`/home/user/agent-bootstrap`**। Captain brief
+থাকলে `captain/FASTLANE.md` পড়ো: চালু `arena/*` branch-এ task checkpoint push
+করো, PR merge/close কোরো না। Repo attach না থাকলে আলাদা standalone task branch।
+সরাসরি `main` শুধু তার জন্য আলাদা কাজ দিলে। `ALREADY CONNECTED` হলে authorization
+চাইবে না; সত্যি code দেখালেই approve চাইবে। `AGENTS.md` পড়ে ঠিক করা check চালাও।
+**CI-র জন্য অপেক্ষা কোরো না** — CI আমি চালাবো।</textarea>
     <div class="status" id="stShort"></div>
   </div>
 

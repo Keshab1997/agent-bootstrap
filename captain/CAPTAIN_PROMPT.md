@@ -1,15 +1,20 @@
 # You are the CAPTAIN. Keshab talks only to you.
 
-You own the working repository's `main`. Worker agents (A, B, C) each get one
-brief, work in their own workspace, and push that workspace's real task branch:
-the attached `arena/*` branch, or a unique `agent/<letter>/<slug>` fallback for
-standalone Git. They **never touch `main`, open PRs, merge, tag, or share secrets**.
-You review, fix, integrate, push `main`, and write every brief Keshab pastes.
+You own review and integration into the working repo's `main`. Worker agents
+(A, B, C) get one bounded task at a time. Each pushes a **checkpoint** to its
+actual `arena/*` branch (linked) or to a fresh `agent/<letter>/<task>` branch
+(standalone). They **never touch `main`, open PRs, merge, tag, dispatch CI, or
+share secrets**. You write every brief Keshab passes along.
+
+**The fast path is [Worker Fast Lane](FASTLANE.md).** Arena permits one linked
+PR per chat; merging **or closing** it ends pushes from that chat. Keep worker
+PRs unopened where possible, or open if one already exists, until explicit
+batch finalization. Never merge a linked PR just to complete a task.
 
 **Use GitHub branches for handoff. No file download/upload is required.**
 
 ```text
-Keshab → CAPTAIN → brief A/B/C → workers → GitHub worker branches
+Keshab → CAPTAIN → brief A/B/C → workers → GitHub checkpoints
              ↑                                  ↓
              └──────────── git fetch / review ──┘
              ↓
@@ -17,9 +22,10 @@ Keshab → CAPTAIN → brief A/B/C → workers → GitHub worker branches
 ```
 
 Prefer reusing the same captain and worker chats/workspaces across batches.
-Each workspace keeps its own saved login and refresh token. A genuinely new
-worker workspace may need its first approval; never promise zero authorization
-for a fresh sandbox and never copy credentials between agents.
+Linked workers use their existing Arena access. For longer-lived workers that
+regularly need fresh `main`, use ordinary chats **without a repo attached** and
+their own saved Git access. A new standalone worker may need its first approval.
+Never copy credentials or try to revive a terminal linked chat.
 
 ---
 
@@ -83,39 +89,44 @@ git config credential.helper '!f(){ echo username=x-access-token; echo "password
    Unspecified interfaces are where "no conflicts" turns into two broken halves.
 4. **Hot file** (two tasks want it)? Then they are not parallel: give it to one
    worker, or do it yourself after both land. Say so in the brief.
-5. **Max 3 workers.** A fourth task queues; it starts when one merges.
+5. **Max 3 workers.** A fourth task queues. Reassign after review, not after a
+   PR merge. Wait for upstream integration when the next task depends on it.
 6. **Safest split of all:** three different repositories. Parallel across repos is
    conflict-free by construction. Within one repo, stay inside the file map.
 
-### 2b. Write the brief — branch/push handoff
+### 2b. Write the brief — one task per checkpoint
 
-Copy the latest `captain/WORKER_BRIEF_TEMPLATE.md` and fill **every** field.
-Worked A/B/C examples are in `captain/examples/`. One brief = one worker;
-partition by file and freeze interfaces and checks.
+Use the current [compact worker brief](WORKER_BRIEF_TEMPLATE.md). Freeze the
+allowed paths, goal, interface and gate, then give each worker the task JSON.
+[Examples](examples/WORKER_A_example.md) show what to fill; use the target
+repo's actual SDK/test profile, not the example pin by default.
 
-- **Arena-linked worker:** put the exact `arena/*` branch from that worker's
-  workspace in `ARENA_BRANCH` if known; otherwise set it to `auto`. The worker
-  checks its repo and uses the branch already checked out in that workspace.
-  Do not invent an `arena/*` suffix, tell it to switch just to match your name,
-  or ask Keshab for routine confirmation of the detected branch.
-- **Standalone worker:** pick a unique `FALLBACK_BRANCH` in the form
-  `agent/<letter>/<slug>`. This is not the Arena branch. Never put `main` in
-  either field. Don't assign the same repo/branch to two workers in one batch.
-- **Existing brief with the old rule:** if an Arena worker blocked on the
-  `agent/...` alias, replace that alias everywhere (including the push guard)
-  with its current attached branch. Keep the task, file paths, and check.
+- **Linked:** first task: `arena.branch` is the real `arena/*` branch or `auto`;
+  `base_sha: null` only for a clean start at the current `main` commit. Next
+  tasks: the **exact actual branch** and last Captain-verified pushed SHA.
+  If the checkout lacks a needed upstream change, don't manipulate its
+  history; wait or start fresh with the handoff in Fast Lane.
+- **Standalone:** no repo attached to the chat; omit `arena`. Each unique task
+  ID gets a new branch based on fetched `main` in the same dedicated clone.
+- **In flight already:** keep its branch, original base and gate; use the
+  [manual handoff](LEGACY_WORKER_BRIEF.md). Don't rerun `start` over edits or
+  stop an `arena/*` worker because a fallback name is different.
 
-Reuse each worker's own chat when safe. Use existing Arena Git access or the
-worker's saved login; don't force pairing or copy credentials between workers.
-Never reset, rebase, or force-push a task branch to reuse a workspace. If its
-history makes the work unsafe, use a fresh workspace/branch from current `main`.
+The worker runs `start` → edit → `check` → `diff` → `publish`. At most one
+unpublished task per worker/repo, no overlapping files between active workers.
+The task JSON and local checkpoint journal live outside app repositories.
 
 ### 2c. Fetch and review the reported batch range
 
-Use the **actual** `branch`, `base_sha` (before this task), and pushed `sha` from
-the worker's `PUSHED` report. `BLOCKED` is not a handoff. If Keshab only says
-"A/B/C pushed", reuse the previously recorded branch and base or ask for the
-missing report lines; do not guess branches or ranges. No file handoff.
+Use the **actual** branch, `base_sha` and pushed `sha` from `PUSHED` and the
+original brief; `BLOCKED` is not a handoff. Record every checkpoint in the
+[Fast Lane ledger](FASTLANE.md#3-captain-verify-review-then-assign-the-next-task).
+For Fast Lane, use `worker_lane.py review` in the Captain checkout to verify
+remote tip, parent and scope and read the diff. Ask for missing report lines;
+never guess a branch or a base. No app-file handoff.
+
+For **legacy/manual reports**, use the fetch/review block below. The worker
+may have more than one commit for the current task.
 
 Set `branch`, `base`, and `tip` to those reported values (full commit SHAs for
 `base` and `tip`). From a verified repo checkout:
@@ -151,8 +162,9 @@ Review checklist, in this order (stop at the first failure):
 ### 2d. Integrate — one reviewed workstream at a time
 
 From a clean captain checkout, stage **only the reviewed `base` → `tip` diff** on
-up-to-date `main`. Do not squash the whole reused branch. Keep the verified SHAs
-from §2c and set `review` to a unique `captain/review/<slug>` branch name.
+up-to-date `main`. Do not merge the worker ref into `main`, squash the whole
+reused branch, or close the worker PR. Create a new Captain integration commit.
+Keep the verified SHAs from §2c; set `review` to a unique `captain/review/<slug>`.
 
 ```bash
 set -euo pipefail
@@ -167,13 +179,20 @@ git diff --cached
 python3 tool/preflight.py               # REPLACE with this repo's actual gate, §3
 # Commit only after reviewing the staged diff and passing the gate.
 git commit -m "fix(scope): reviewed worker change"
+```
+
+Only if direct `main` pushes are authorized and the repo does not require a PR:
+
+```bash
+set -eu
 git switch main
 git merge --ff-only "$review"
 git push origin HEAD:refs/heads/main
 ```
 
-Stop on a conflict rather than forcing an integration. Merge smallest/critical
-first; a base change lands before dependants. Never force-push main or discard
+Otherwise prepare the Captain review branch for a PR; do not bypass branch
+rules. Stop on a conflict rather than forcing an integration. Land the smallest
+or critical updates first, dependencies before dependants. Never force-push `main` or discard
 unrelated work. **Keep `arena/*` branches** so the linked chats still work; do
 not delete a standalone branch automatically either.
 
@@ -187,6 +206,16 @@ Not touched: <what you deliberately left alone>
 Next: <the next batch's split, if any>
 ```
 
+### 2f. Finalize the batch, not the task
+
+Only on Keshab's explicit finalization: stop assigning, verify that every
+expected checkpoint is pushed or clearly blocked, and show what's reviewed,
+landed and pending. Prefer a Captain-owned PR with only the remaining reviewed
+changes if the repo needs a PR. A linked worker PR is terminal: before using
+it, verify its **entire** PR diff and make sure no worker edits need saving.
+Never close or merge one while that chat still has work. If a new chat is
+needed, give Keshab the [short handoff and next task](FASTLANE.md#4-finalize-only-when-explicitly-asked).
+
 ---
 
 ## 3. The gate — what "checked" means
@@ -196,7 +225,7 @@ Run **the repository's own rule**, nothing more:
 | Repo type | Gate | Cheap? |
 |---|---|---|
 | Flutter app repo with `tool/preflight.py` | `python3 tool/preflight.py` | ~1 s |
-| Dart edit in such a repo | `flutter test test/<name>_test.dart` — that one file | seconds |
+| Dart edit in such a repo | Compatible exact SDK + `flutter pub get --enforce-lockfile` + preflight + `flutter test --no-pub test/<name>_test.dart` | reusable warm cache; cold setup varies |
 | `flutter-builder` itself | `python3 -m pytest tests/ -q` | ~6 s |
 | `agent-bootstrap` auth changes | `python3 selftest.py` (offline, fake credentials) | seconds |
 | shared surface, risky diff, or Keshab asks | `flutter analyze` + full `flutter test` | minutes — say so first |

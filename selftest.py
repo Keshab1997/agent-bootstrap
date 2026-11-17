@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Offline regressions for auth, prompt copies, and worker branch handoff.
+"""Offline regressions for auth, prompt copies, Fast Lane Git and Flutter setup.
 
     python3 selftest.py
 
-Uses only stdlib, fake credentials and isolated temporary files. Every network
-entry point is blocked/mocked. When piped without a local clone, the bootstrap
-step first downloads gh_app.py and device_pair.py; the tests themselves are offline.
+Uses stdlib, fake credentials, and isolated temporary files and Git remotes.
+When piped without a local clone, the bootstrap step first downloads gh_app.py
+and device_pair.py; the tests themselves are offline. The local Fast Lane
+suite additionally uses Git, bash, tar and xz on Linux.
 """
 from __future__ import annotations
 
@@ -554,7 +555,7 @@ class PromptTests(unittest.TestCase):
 
 
 @unittest.skipUnless(
-    (SRC.parent / 'captain' / 'WORKER_BRIEF_TEMPLATE.md').exists()
+    (SRC.parent / 'captain' / 'LEGACY_WORKER_BRIEF.md').exists()
     and shutil.which('git') and shutil.which('bash'),
     'requires a local playbook, git, and bash',
 )
@@ -574,7 +575,7 @@ class WorkerHandoffTests(unittest.TestCase):
         self.git('config', 'user.email', 'worker-test@example.invalid')
         self.main = self.commit('lesson.txt', 'original\n')
         self.git('update-ref', 'refs/remotes/origin/main', self.main)
-        self.template = (SRC.parent / 'captain' / 'WORKER_BRIEF_TEMPLATE.md').read_text()
+        self.template = (SRC.parent / 'captain' / 'LEGACY_WORKER_BRIEF.md').read_text()
 
     def snippet(self, name):
         return self.template.split(f'<!-- {name} -->\n```bash\n', 1)[1].split('\n```', 1)[0]
@@ -684,6 +685,17 @@ class WorkerHandoffTests(unittest.TestCase):
         self.assertEqual(self.git('diff', '--cached', '--name-only'), 'lesson.txt')
         self.assertEqual((self.repo / 'lesson.txt').read_text(), 'current task only\n')
         self.assertFalse((self.repo / 'earlier-task.txt').exists())
+
+
+def load_tests(loader, suite, pattern):
+    # Keep piped install/auth selftests working without a local Captain pack.
+    # Load explicit sibling files so the local suite also works with python -I.
+    pack = SRC.parent / 'captain'
+    if (pack / 'fastlane_selftest.py').is_file():
+        for name in ('flutter_sdk', 'worker_lane', 'fastlane_selftest'):
+            module = load_module(name, pack / f'{name}.py')
+        suite.addTests(loader.loadTestsFromModule(module, pattern=pattern))
+    return suite
 
 
 if __name__ == "__main__":

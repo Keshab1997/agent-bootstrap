@@ -27,8 +27,10 @@ curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/set
 
 ## For AI agents — read this first
 
-Each captain, standalone agent or branch-pushing worker restores its own saved
-session. Reuse the same workspaces across batches; do not share credentials.
+Captains and standalone agents restore their own saved sessions. If you are
+a Captain worker, follow [Fast Lane](captain/FASTLANE.md) first: a linked worker
+uses its existing Arena access rather than starting this pairing flow. Reuse
+workspaces across batches; do not share credentials.
 
 1. **Run** `python3 gh_app.py connect`. It first reuses a working token, then
    tries the saved refresh token if access expired. Successful recovery prints
@@ -79,25 +81,27 @@ No new PAT, private key, server or repository setting is needed for this update.
 
 ---
 
-## Multiple agents — reusable workspaces, direct branch pushes
+## Multiple agents — keep the worker chats, checkpoint each task
 
-Start with [`CAPTAIN_START_PROMPT.md`](CAPTAIN_START_PROMPT.md). The captain
-restores access and reads [`captain/CAPTAIN_PROMPT.md`](captain/CAPTAIN_PROMPT.md).
-It fills [`worker briefs`](captain/WORKER_BRIEF_TEMPLATE.md) with disjoint
-files. Workers in a repo linked to Arena use their current `arena/*` branch;
-standalone workers use a unique `agent/<letter>/<slug>` fallback. Each worker
-pushes its actual task branch and reports `branch`, `base_sha` and `sha`. The
-captain fetches that branch and integrates only the reviewed task diff into
-`main`. Existing captains should fast-forward the bootstrap docs before the
-next batch; do not reuse an old brief that forces the standalone name in Arena.
-**Keshab does not download or upload files between chats.**
+Start with [`CAPTAIN_START_PROMPT.md`](CAPTAIN_START_PROMPT.md) and use
+[**Worker Fast Lane**](captain/FASTLANE.md). The Captain assigns up to three
+file-disjoint [small briefs](captain/WORKER_BRIEF_TEMPLATE.md). `worker_lane.py`
+checks the actual checkout, runs the assigned gate, and commits and verifies the
+worker's push to its task branch. The Captain reviews only that task's exact
+base → pushed SHA, then integrates from a separate checkout.
 
-Reuse the same captain and A/B/C worker chats/workspaces. Each keeps its own
-saved access/refresh token. A genuinely new workspace needs its first approval;
-revoked, lost or expired refresh credentials can also require re-approval.
-This is not cross-sandbox SSO, and credentials are never copied between agents.
+- **Linked Arena chats:** stay on the actual `arena/*` branch across tasks.
+  No PR per task. A linked chat gets one PR; after that PR is merged or
+  closed, that chat cannot push. Use the last verified tip for the next task,
+  and finalize only when the batch is finished. Follow the short handoff if
+  a new chat is needed.
+- **Ordinary chats without a repo attached:** use each worker's own GitHub
+  access and a separate `agent/<letter>/<task>` branch from fetched `main`
+  per task. No Arena-managed PR to close in that chat. A fresh standalone
+  workspace may need approval; never copy credentials.
 
-Bengali walk-through: [`captain/HOW_TO_START_BN.md`](captain/HOW_TO_START_BN.md).
+**No app-file downloads/uploads between chats.** Share only the worker's
+`PUSHED` report with the Captain. See the [Bengali walkthrough](captain/HOW_TO_START_BN.md).
 
 ---
 
@@ -282,7 +286,7 @@ recover without another approval while its refresh token remains usable.
 ```bash
 python3 gh_app.py status          # checks/recoveries only; never opens a flow
 python3 device_pair.py status     # pending code, original remaining lifetime
-python3 selftest.py               # offline auth regressions; only fake credentials
+python3 selftest.py               # offline auth, prompt, Git checkpoint and SDK regressions
 ```
 
 ### Can an authenticator's six-digit GitHub code replace the device code?
@@ -323,7 +327,7 @@ agent-bootstrap/
 ├── vault.py               ← optional passphrase-encrypted token store
 ├── AGENT_START_PROMPT.md  ← hand this to a fresh agent session (one paste)
 ├── CAPTAIN_START_PROMPT.md ← same, for the captain of a multi-agent batch
-├── captain/               ← branch-push playbook, worker briefs, examples, BN guide
+├── captain/               ← Fast Lane runner, exact Flutter setup, briefs, BN guide
 ├── PROMPT-FOR-NEW-AGENT.txt ← same prompt as plain text
 ├── AGENT_PROMPT_COPY.html ← same prompt with a one-click copy button
 ├── RESUME.md              ← workspace resume guide (paths, traps, policies)

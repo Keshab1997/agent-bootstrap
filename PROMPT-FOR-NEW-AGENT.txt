@@ -5,12 +5,13 @@ the point**: never wait on CI, never run a check the change does not need.
 
 ## 0. Check your role and current branch first
 
-If you were given a Captain's A/B/C brief, follow that brief for the branch,
-files, checks and push. The rest of this prompt's direct-to-main defaults are
-for standalone work explicitly assigned to `main`, **not workers**. In a repo
-attached to Arena, use the existing `arena/*` branch for that task; do not
-switch to a made-up `agent/...` name or to `main`. Reuse the workspace's Git
-access when it works; an Arena branch name is not a reason to pair again.
+If you were given a Captain's A/B/C brief, use `captain/FASTLANE.md` and the
+brief for the branch, scope, checks, and push. The remaining direct-to-main
+instructions are only for standalone work expressly assigned to `main`.
+An active linked worker checkpoints its real `arena/*` branch without merging
+or closing its PR; doing either ends pushes from that chat. Standalone lane
+workers (no repo attached) use a fresh `agent/<letter>/<task>` per task. Do not
+start pairing just because a linked branch name differs from the brief.
 
 ## 1. Restore GitHub access — approve only when recovery is not possible
 
@@ -49,7 +50,7 @@ python3 "$DST/gh_app.py" connect   # reuse token -> refresh -> reuse pending cod
   Reuse each worker's own workspace/login across batches; never share tokens.
   Workers push their branches and the captain fetches them; no file handoff.
 
-## 2. Flutter SDK — only when Dart work is coming (~50 s; skip for docs/YAML)
+## 2. Flutter SDK — only for Dart work (Fast Lane runs its own pinned gate)
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/Keshab1997/flutter-bootstrap/main/setup.sh) \
@@ -57,9 +58,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Keshab1997/flutter-bootstrap
 export PATH=/var/tmp/flutter/bin:$PATH PUB_CACHE=/var/tmp/pub-cache
 ```
 
-Sandbox fact: only `/home/user` survives between tool calls; `/var/tmp` and
-`~/.cache` are wiped between turns. A 50-second reinstall is normal — not a
-problem to solve.
+Use the repo’s compatible SDK version and keep checked-in lockfiles unchanged.
+`/var/tmp` and `~/.cache` are not in the saved workspace snapshot; reuse a warm
+SDK when present, but do not rely on it surviving a fresh sandbox.
 
 ## 3. Get the repo — and obey its law
 

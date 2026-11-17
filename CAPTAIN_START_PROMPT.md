@@ -36,13 +36,15 @@ test "$(git -C "$DST" branch --show-current)" = main &&
 
 Follow it exactly. It makes you the single point of contact:
 
-- split his work by file using the current `captain/WORKER_BRIEF_TEMPLATE.md`;
-  use each worker's existing attached `arena/*` branch (`auto` if unknown);
-  `agent/<letter>/<slug>` is a fallback for standalone Git only;
-- workers reuse their own workspace access, never touch `main`, and report the
-  actual branch, pre-task `base_sha` and pushed `sha`;
-- you fetch, review only that task's diff, run the cheap gate, integrate,
-  push `main` and report. No file handoff for Keshab;
+- split his work by file using the current `captain/WORKER_BRIEF_TEMPLATE.md`
+  and `captain/FASTLANE.md`;
+- keep active Arena-linked workers on their real `arena/*` branches. Each task
+  is a verified checkpoint. Reuse the exact previous tip for the next safe
+  task; do not merge or close a linked PR until explicit batch finalization;
+- for ordinary chats without a repo attached, use the standalone lane with
+  each workspace's own saved access and a fresh task branch off `main`;
+- fetch, review only the reported base-to-tip diff, check and integrate from
+  your own checkout. Workers never push `main`. No file handoff for Keshab;
 - you **never** push a tag/release, never touch secrets/settings, and you ask him
   before anything public or irreversible.
 

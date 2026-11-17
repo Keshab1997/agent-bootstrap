@@ -1,41 +1,27 @@
-# captain/ — এক Captain, workers-এর সরাসরি branch push
+# Captain: one chat per worker, multiple task checkpoints
 
-**কোনো ফাইল download/upload করে handoff করতে হবে না।** Workers নিজেদের
-GitHub branch-এ push করবে; Captain সেখান থেকে fetch করে review/merge করবে।
+Keshab works through the Captain. Up to three workers get disjoint file lists;
+workers publish tested branch checkpoints, and the Captain reviews only the
+reported base-to-tip range. No app-file download/upload between chats.
 
-```text
-Keshab → Captain → brief A/B/C → workers → GitHub worker branches
-            ↑                               ↓
-            └──────── git fetch / review ──┘
-            ↓
-       check → merge → main push → report
-```
+**Do not merge or close a linked Arena PR per task.** That ends push access
+from its chat. Keep that branch for the next safe task; finalize at the end of
+the batch. An ordinary chat with no repo attached can instead use its own
+approved GitHub access and a fresh task branch per task.
 
-## শুরু
+1. Start the Captain with [`CAPTAIN_START_PROMPT.md`](../CAPTAIN_START_PROMPT.md).
+2. Use [Fast Lane](FASTLANE.md) and the [compact brief](WORKER_BRIEF_TEMPLATE.md)
+   for new work. Resume old in-flight work without resetting it.
+3. Relay `AGENT … PUSHED` or `BLOCKED`. The Captain verifies, reviews, and
+   assigns the next brief without requiring a linked PR merge.
 
-1. Captain chat-এ root-এর `CAPTAIN_START_PROMPT.md` দিন। সে saved session
-   restore করবে; সত্যিই দরকার হলে approval চাইবে।
-2. Repo ও কাজ বলুন। Captain ফাইল ভাগ করে A/B/C brief লিখবে।
-3. Brief-গুলো worker chat-এ দিন। **সম্ভব হলে একই worker chats/workspaces রাখুন।**
-   নতুন workspace-এর প্রথমবার approval লাগতে পারে; পরে saved login/refresh reuse হবে।
-4. Arena-linked worker নিজের চালু `arena/*` branch-ই রাখবে। `agent/<letter>/<slug>`
-   শুধু standalone Git-এর fallback। Worker-এর আসল `branch`, `base_sha` ও pushed `sha`
-   Captain-কে দিন; সে ওই branch-এর শুধু বর্তমান task-এর diff আনবে।
-5. Captain diff review → cheap check → merge → `main` push → পাঁচ লাইনের report।
-
-## ফাইল
-
-| ফাইল | কাজ |
+| File | Purpose |
 |---|---|
-| `CAPTAIN_PROMPT.md` | Captain-এর নিয়ম, file split, review/merge, report |
-| `WORKER_BRIEF_TEMPLATE.md` | Worker-এর task, allowed files, check ও branch-push brief |
-| `examples/WORKER_A_example.md`, `WORKER_B_example.md`, `WORKER_C_example.md` | নতুন template-এর জন্য ভরা task field-এর উদাহরণ |
-| `HOW_TO_START_BN.md` | মানুষের জন্য ধাপে ধাপে নির্দেশনা |
+| [HOW_TO_START_BN.md](HOW_TO_START_BN.md) | মানুষের জন্য ধাপে ধাপে ব্যবহার |
+| [CAPTAIN_PROMPT.md](CAPTAIN_PROMPT.md) | Scope, review, integration, and finalization rules |
+| [`worker_lane.py`](worker_lane.py) | Start, check, diff, publish, and fetch-only review |
+| [`flutter_sdk.py`](flutter_sdk.py) | Exact Flutter SDK installation/reuse for Flutter profiles |
+| [`examples/`](examples/) | Three compatible, file-disjoint example briefs |
+| [LEGACY_WORKER_BRIEF.md](LEGACY_WORKER_BRIEF.md) | Manual branch handoff for work already started |
 
-প্রত্যেক workspace নিজের credentials রাখবে। Token/refresh token কখনো share হবে
-না। Fresh workspace, revoked credentials বা হারানো refresh হলে আবার approval
-লাগতে পারে—কখনোই “আর কোনোদিন লাগবে না” ধরে নেবেন না। Authenticator-এর 2FA code
-এই app authorization-এর বিকল্প নয়।
-
-Captain tags/releases, secrets/settings/workflows বদলাবে না অনুমতি ছাড়া।
-কোনো branch diff না পড়ে merge করবে না। কোনো worker CI dispatch করবে না।
+No shared tokens, settings changes, releases, or manual CI dispatch by workers.
