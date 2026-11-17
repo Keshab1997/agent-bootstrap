@@ -83,9 +83,13 @@ No new PAT, private key, server or repository setting is needed for this update.
 
 Start with [`CAPTAIN_START_PROMPT.md`](CAPTAIN_START_PROMPT.md). The captain
 restores access and reads [`captain/CAPTAIN_PROMPT.md`](captain/CAPTAIN_PROMPT.md).
-It fills [`worker briefs`](captain/WORKER_BRIEF_TEMPLATE.md), assigning disjoint
-files and unique `agent/A|B|C/<slug>` branches. Workers push those branches;
-the captain fetches → reviews → checks → integrates → pushes `main`.
+It fills [`worker briefs`](captain/WORKER_BRIEF_TEMPLATE.md) with disjoint
+files. Workers in a repo linked to Arena use their current `arena/*` branch;
+standalone workers use a unique `agent/<letter>/<slug>` fallback. Each worker
+pushes its actual task branch and reports `branch`, `base_sha` and `sha`. The
+captain fetches that branch and integrates only the reviewed task diff into
+`main`. Existing captains should fast-forward the bootstrap docs before the
+next batch; do not reuse an old brief that forces the standalone name in Arena.
 **Keshab does not download or upload files between chats.**
 
 Reuse the same captain and A/B/C worker chats/workspaces. Each keeps its own

@@ -58,9 +58,10 @@ Captain A/B/C-কে brief দেবে। সম্ভব হলে প্র�
 বারবার ব্যবহার করুন। প্রথমবার approval লাগতে পারে; পরের batch-এ saved login
 ও refresh reuse হবে।
 
-Worker নিজের `agent/A|B|C/...` branch push করবে। Captain-কে শুধু বলুন
-**“A/B/C push করেছে, fetch করে দেখে নাও”**। কোনো ফাইল download/upload লাগবে না।
-Captain diff পড়ে, check করে, `main`-এ merge/push করবে।
+Arena-linked worker chat যে `arena/*` branch-এ খোলা, worker সেটাই push করবে।
+`agent/<letter>/<slug>` শুধু standalone Git-এর fallback—Arena branch বদলানোর
+দরকার নেই। Captain-কে `branch`, `base_sha`, pushed `sha` দিন; কোনো ফাইল
+upload/download লাগবে না। Captain ওই task-এর diff দেখে `main`-এ integrate করবে।
 
 Private repo-তেও worker-এর নিজস্ব অনুমোদিত access ব্যবহার হবে। Token কখনো
 এক agent থেকে অন্যজনকে কপি হবে না। নতুন workspace বা revoked/lost credentials

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline auth regressions: refresh first, resume one code, never leak tokens.
+"""Offline regressions for auth, prompt copies, and worker branch handoff.
 
     python3 selftest.py
 
@@ -19,6 +19,8 @@ import html
 import re
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -545,6 +547,143 @@ class PromptTests(unittest.TestCase):
         page = (SRC.parent / "AGENT_PROMPT_COPY.html").read_text()
         embedded = re.search(r'<textarea id="fullBox"[^>]*>(.*?)</textarea>', page, re.S).group(1)
         self.assertEqual(html.unescape(embedded), body)
+        short = text.split('## সংক্ষিপ্ত version (চ্যাটে দ্রুত paste করার জন্য)\n', 1)[1].split('\n---', 1)[0].strip()
+        short = '\n'.join(line[2:] if line.startswith('> ') else line for line in short.splitlines())
+        embedded_short = re.search(r'<textarea id="shortBox"[^>]*>(.*?)</textarea>', page, re.S).group(1)
+        self.assertEqual(html.unescape(embedded_short), '(চ্যাটে দ্রুত paste করার জন্য)\n\n' + short)
+
+
+@unittest.skipUnless(
+    (SRC.parent / 'captain' / 'WORKER_BRIEF_TEMPLATE.md').exists()
+    and shutil.which('git') and shutil.which('bash'),
+    'requires a local playbook, git, and bash',
+)
+class WorkerHandoffTests(unittest.TestCase):
+    fallback = 'agent/A/polish-01-quiz'
+    arena = 'arena/1e1d3b08-grammarbondhu'
+
+    def setUp(self):
+        scratch = tempfile.TemporaryDirectory(prefix='worker-handoff-')
+        self.addCleanup(scratch.cleanup)
+        self.repo = Path(scratch.name) / 'worker'
+        self.repo.mkdir()
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+        self.env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1', GIT_TERMINAL_PROMPT='0')
+        self.git('init', '-q', '-b', 'main')
+        self.git('config', 'user.name', 'Worker handoff test')
+        self.git('config', 'user.email', 'worker-test@example.invalid')
+        self.main = self.commit('lesson.txt', 'original\n')
+        self.git('update-ref', 'refs/remotes/origin/main', self.main)
+        self.template = (SRC.parent / 'captain' / 'WORKER_BRIEF_TEMPLATE.md').read_text()
+
+    def snippet(self, name):
+        return self.template.split(f'<!-- {name} -->\n```bash\n', 1)[1].split('\n```', 1)[0]
+
+    def run_local(self, *args, check=True):
+        return subprocess.run(args, cwd=self.repo, env=self.env, check=check,
+                              capture_output=True, text=True, timeout=15)
+
+    def git(self, *args):
+        return self.run_local('git', *args).stdout.strip()
+
+    def commit(self, name, content):
+        (self.repo / name).write_text(content)
+        self.git('add', '--', name)
+        self.git('commit', '-qm', 'test: ' + name)
+        return self.git('rev-parse', 'HEAD')
+
+    def select(self, arena='auto'):
+        script = self.snippet('worker-branch-selection').replace('{{ARENA_BRANCH}}', arena).replace(
+            '{{FALLBACK_BRANCH}}', self.fallback).replace('{{LETTER}}', 'A')
+        return self.run_local('bash', '-c', script, check=False)
+
+    def assert_selected(self, result, branch, head):
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('task_branch: ' + branch, result.stdout)
+        self.assertIn('head: ' + head, result.stdout)
+        self.assertEqual(self.git('branch', '--show-current'), branch)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+
+    def test_attached_arena_branch_wins_without_creating_an_alias(self):
+        self.git('switch', '-qc', self.arena)
+        for expectation in ('auto', self.arena):
+            with self.subTest(expectation=expectation):
+                self.assert_selected(self.select(expectation), self.arena, self.main)
+                self.assertEqual(self.git('branch', '--list', self.fallback), '')
+
+    def test_mismatched_arena_branch_stops_without_switching(self):
+        self.git('switch', '-qc', self.arena)
+        result = self.select('arena/different-worker')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Wrong Arena branch', result.stderr)
+        self.assertEqual(self.git('branch', '--show-current'), self.arena)
+        self.assertEqual(self.git('branch', '--list', self.fallback), '')
+
+    def test_standalone_fallback_starts_at_fetched_main(self):
+        self.git('switch', '-qc', 'newer-main')
+        upstream = self.commit('lesson.txt', 'upstream\n')
+        self.git('update-ref', 'refs/remotes/origin/main', upstream)
+        self.git('switch', '-q', 'main')
+        self.assert_selected(self.select(), self.fallback, upstream)
+        self.assertEqual(self.git('rev-parse', 'main'), self.main)
+
+    def test_existing_standalone_branch_keeps_its_work(self):
+        self.git('switch', '-qc', self.fallback)
+        tip = self.commit('lesson.txt', 'unpublished task work\n')
+        self.git('switch', '-q', 'main')
+        self.assert_selected(self.select(), self.fallback, tip)
+        self.assert_selected(self.select(), self.fallback, tip)
+
+    def test_dirty_main_and_detached_head_are_not_repurposed(self):
+        (self.repo / 'lesson.txt').write_text('keep my uncommitted work\n')
+        self.assertNotEqual(self.select().returncode, 0)
+        self.assertEqual(self.git('branch', '--show-current'), 'main')
+        self.assertEqual(self.git('branch', '--list', self.fallback), '')
+        self.assertEqual((self.repo / 'lesson.txt').read_text(), 'keep my uncommitted work\n')
+        self.git('switch', '-q', '--detach')
+        self.assertNotEqual(self.select().returncode, 0)
+        self.assertEqual(self.git('branch', '--show-current'), '')
+        self.assertEqual(self.git('branch', '--list', self.fallback), '')
+
+    def test_exact_arena_brief_is_not_run_on_standalone_main(self):
+        self.assertNotEqual(self.select(self.arena).returncode, 0)
+        self.assertEqual(self.git('branch', '--show-current'), 'main')
+        self.assertEqual(self.git('branch', '--list', self.fallback), '')
+
+    def test_worker_push_uses_the_arena_ref_and_leaves_main_unchanged(self):
+        origin = str(self.repo.parent / 'origin.git')
+        self.git('init', '-q', '--bare', '-b', 'main', origin)
+        self.git('remote', 'add', 'origin', origin)
+        self.git('push', 'origin', 'main')
+        self.git('switch', '-qc', self.arena)
+        self.assert_selected(self.select(), self.arena, self.main)
+        (self.repo / 'lesson.txt').write_text('current task only\n')
+        self.git('add', '--', 'lesson.txt')
+        push = self.snippet('worker-branch-push').replace(
+            '{{FALLBACK_BRANCH}}', self.fallback).replace('{{COMMIT_MESSAGE}}', 'test: new lesson')
+        mismatch = self.run_local('bash', '-c', 'branch=$1\n' + push,
+                                  'worker-test', self.fallback, check=False)
+        self.assertNotEqual(mismatch.returncode, 0)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), self.main)
+        self.run_local('bash', '-c', 'branch=$1\n' + push, 'worker-test', self.arena)
+        branches = dict(line.split('\t')[::-1] for line in self.git('ls-remote', '--heads', 'origin').splitlines())
+        self.assertEqual(branches, {'refs/heads/main': self.main,
+                                   'refs/heads/' + self.arena: self.git('rev-parse', 'HEAD')})
+
+    def test_reused_branch_integration_stages_only_the_reported_range(self):
+        self.git('switch', '-qc', self.arena)
+        base = self.commit('earlier-task.txt', 'older work not in the brief\n')
+        tip = self.commit('lesson.txt', 'current task only\n')
+        self.git('switch', '-q', 'main')
+        self.commit('upstream.txt', 'unrelated advance on main\n')
+        self.git('switch', '-qc', 'captain/review/task')
+        captain = (SRC.parent / 'captain' / 'CAPTAIN_PROMPT.md').read_text()
+        stage = re.search(r'^git diff --binary.*\n  git apply --3way --index$', captain, re.M).group(0)
+        self.run_local('bash', '-c', 'set -euo pipefail\nbase=$1\ntip=$2\n' + stage,
+                       'captain-test', base, tip)
+        self.assertEqual(self.git('diff', '--cached', '--name-only'), 'lesson.txt')
+        self.assertEqual((self.repo / 'lesson.txt').read_text(), 'current task only\n')
+        self.assertFalse((self.repo / 'earlier-task.txt').exists())
 
 
 if __name__ == "__main__":

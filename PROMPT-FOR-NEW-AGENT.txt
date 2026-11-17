@@ -3,7 +3,19 @@
 Everything below is the whole onboarding. Read it once, then work. **Speed is
 the point**: never wait on CI, never run a check the change does not need.
 
+## 0. Check your role and current branch first
+
+If you were given a Captain's A/B/C brief, follow that brief for the branch,
+files, checks and push. The rest of this prompt's direct-to-main defaults are
+for standalone work explicitly assigned to `main`, **not workers**. In a repo
+attached to Arena, use the existing `arena/*` branch for that task; do not
+switch to a made-up `agent/...` name or to `main`. Reuse the workspace's Git
+access when it works; an Arena branch name is not a reason to pair again.
+
 ## 1. Restore GitHub access — approve only when recovery is not possible
+
+Skip this pairing setup if the task can use the workspace’s existing Git access.
+Captain workers follow the auth steps in their brief.
 
 ```bash
 DST=/home/user/agent-bootstrap   # keep the session in this workspace between turns
@@ -73,17 +85,19 @@ that block are Keshab's own — never delete them.
 
 ## 5. CI is manual — Keshab's button, not yours
 
-Nothing runs on a push. Do **not** wait for a run after pushing your work.
-Push to `main` directly, commit often, batch freely. When a batch is done,
-tell him: *"batch ready — Actions → Flutter CI → Run workflow"*. Read the
+The manual Flutter CI is Keshab's to start; repo-specific previews may still
+run on branch pushes. Do **not** wait on CI. Commit on the authorized task
+branch. When a standalone `main` batch is done, tell him:
+*"batch ready — Actions → Flutter CI → Run workflow"*. Read the
 result with `python3 tool/ci_watch.py`. If a run is red: **read the failing
 log first**, then fix.
 
 ## 6. Working rules
 
-- Push straight to `main` — no branches, no PRs.
-  `python3 tool/agent_loop.py -m "feat(scope): what changed"` = preflight +
-  secret guard + commit + push, one call.
+- Only for standalone work assigned straight to `main`, use
+  `python3 tool/agent_loop.py -m "feat(scope): what changed"` for preflight,
+  secret guard, commit and push. Captain workers never use that shortcut:
+  push only the brief's real task branch, no PR or CI dispatch.
 - Conventional commits: `feat(update): …`, `fix(auth): …`, `chore(ci): …`.
 - Secrets never enter git (`*.jks`, `*.keystore`, `key.properties`,
   `google-services.json`, any token). CI receives them from repo secrets.
@@ -113,7 +127,7 @@ log first**, then fix.
 
 ## 8. "Done" looks like
 
-Small focused commits on `main`, local sha == remote sha; checks matched to
-the change (never the full battery by reflex); at most one CI run — dispatched
-by Keshab, never waited on by you; and a short report: **what changed, the
-evidence, what you deliberately did not touch**.
+Small focused commits on the authorized branch with local SHA == remote SHA;
+checks matched to the change; manual CI only if Keshab dispatches it. A Captain
+worker reports `PUSHED`, actual branch, `base_sha`, pushed `sha`, and checks, or
+`BLOCKED` with the specific reason. Do not report unpushed work as done.

@@ -17,7 +17,10 @@ between sessions — everything else is rebuilt in seconds from what is written 
 Give it the copy-paste block in **`AGENT_START_PROMPT.md`** — it is the whole
 onboarding (pairing, Flutter SDK, check policy, CI-is-manual, sandbox traps)
 in one paste. This RESUME.md is the longer version for an agent already inside
-the workspace.
+the workspace. For a Captain batch, refresh `agent-bootstrap` from `origin/main`
+without discarding local work, then use `captain/WORKER_BRIEF_TEMPLATE.md`. An
+Arena-linked worker keeps its own `arena/*` branch, never pushes `main`, and
+reports the actual branch and both task SHAs.
 
 ## Check policy (agent pack v1.13.1) — do not backslide
 

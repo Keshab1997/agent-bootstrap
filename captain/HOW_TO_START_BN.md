@@ -34,21 +34,26 @@ Batch 1 বানাও:
 A/B/C-র branch-push briefs দাও; আগের worker chats-গুলোতেই কাজ দেব।
 ```
 
-Captain goal, allowed files, exact interface, cheap check এবং আলাদা branch
-name ভরে দেবে। এক ফাইল দুই worker পাবে না। ছোট কাজ হলে Captain নিজেই করতে পারে।
+Captain নতুন `WORKER_BRIEF_TEMPLATE.md` দিয়ে goal, allowed files, interface
+ও check লিখবে। Arena chat-এর branch জানা থাকলে ঠিক সেই নাম, না জানলে `auto`।
+`agent/<letter>/<slug>` আলাদা fallback, শুধু standalone Git-এর জন্য। এক ফাইল
+বা এক branch দুই worker পাবে না।
 
 ## ৩. Worker চ্যাটগুলো
 
 A/B/C brief-গুলো সংশ্লিষ্ট worker chat-এ দিন। Worker নিজের saved login restore
 করবে। একেবারে নতুন worker হলে প্রথমবার code approve করতে হতে পারে।
 
-কাজ ও check শেষে worker নিজের `agent/A|B|C/...` branch push করবে—`main` নয়।
-Existing branch বা অসমাপ্ত কাজ overwrite/reset করবে না। শেষে report দেবে:
+Arena-linked chat হলে worker সেখানে থাকা `arena/*` branch-এই কাজ করবে। শুধু
+brief-এর fallback নাম আলাদা বলে branch switch বা নতুন approval চাইবে না।
+কাজ ও check শেষে আসল branch push করবে—`main` নয়। অসমাপ্ত কাজ overwrite/reset
+করবে না। Push verify হলে রিপোর্ট দেবে:
 
 ```text
-AGENT A DONE
-branch: agent/A/home-overflow
-sha: <আসল commit SHA>
+AGENT A PUSHED
+branch: <আসল Arena বা standalone branch>
+base_sha: <কাজ শুরুর আগের পূর্ণ SHA>
+sha: <আসল pushed commit-এর পূর্ণ SHA>
 files: <আসল পরিবর্তিত ফাইল>
 check: <নির্ধারিত check এবং আসল ফল>
 changed: <পরিবর্তনের সারাংশ>
@@ -62,15 +67,16 @@ blocked: <none বা আসল সমস্যা>
 A/B/C push করেছে — fetch করে diff দেখে merge করো।
 ```
 
-চাইলে workers-এর report-ও paste করতে পারেন; **কোনো ফাইল download বা attach
-করতে হবে না**। Captain পরিচিত branch names ধরে GitHub থেকে কাজগুলো আনবে।
-Push না হলে শুধু worker-এর local workspace থেকে Captain কাজ পাবে না; worker-কে
-নিজের branch push শেষ করতে হবে।
+Captain আগে থেকেই branch ও base না জানলে report-এর `branch`, `base_sha`, `sha`
+লাইনগুলো paste করুন; **কোনো ফাইল download বা attach করতে হবে না**। `AGENT A BLOCKED`
+মানে handoff হয়নি। পুরোনো brief-এর branch mismatch হলে একই chat-এ নিশ্চিত করুন
+যে বর্তমান `arena/*` branch-ই task branch; file list ও check একই থাকবে।
 
 ## ৫. Review ও publish
 
-Captain actual diff পড়বে, scope/secrets যাচাই করবে, review branch-এ নির্ধারিত
-check চালাবে, তারপর `main`-এ integrate/push করে পাঁচ লাইনের report দেবে।
+Captain ওই task-এর `base_sha` থেকে pushed `sha` পর্যন্ত diff পড়বে, scope/secrets
+যাচাই করবে, review branch-এ check চালাবে, তারপর `main`-এ integrate/push করবে।
+Arena chat-এর branch delete করবে না।
 কোনো tag/release/secret/settings/workflow বদলানোর আগে অনুমতি নেবে।
 
 ## Authorization সম্পর্কে পরিষ্কার কথা

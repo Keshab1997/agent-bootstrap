@@ -18,8 +18,9 @@ Keshab → Captain → brief A/B/C → workers → GitHub worker branches
 2. Repo ও কাজ বলুন। Captain ফাইল ভাগ করে A/B/C brief লিখবে।
 3. Brief-গুলো worker chat-এ দিন। **সম্ভব হলে একই worker chats/workspaces রাখুন।**
    নতুন workspace-এর প্রথমবার approval লাগতে পারে; পরে saved login/refresh reuse হবে।
-4. Worker নিজের `agent/A|B|C/...` branch push করবে। Captain-কে শুধু জানান কারা
-   push করেছে; সে `git fetch` করে নিজেই পরিবর্তন নিতে পারবে।
+4. Arena-linked worker নিজের চালু `arena/*` branch-ই রাখবে। `agent/<letter>/<slug>`
+   শুধু standalone Git-এর fallback। Worker-এর আসল `branch`, `base_sha` ও pushed `sha`
+   Captain-কে দিন; সে ওই branch-এর শুধু বর্তমান task-এর diff আনবে।
 5. Captain diff review → cheap check → merge → `main` push → পাঁচ লাইনের report।
 
 ## ফাইল
@@ -28,7 +29,7 @@ Keshab → Captain → brief A/B/C → workers → GitHub worker branches
 |---|---|
 | `CAPTAIN_PROMPT.md` | Captain-এর নিয়ম, file split, review/merge, report |
 | `WORKER_BRIEF_TEMPLATE.md` | Worker-এর task, allowed files, check ও branch-push brief |
-| `examples/WORKER_A_example.md`, `WORKER_B_example.md`, `WORKER_C_example.md` | ভরা branch-push উদাহরণ |
+| `examples/WORKER_A_example.md`, `WORKER_B_example.md`, `WORKER_C_example.md` | নতুন template-এর জন্য ভরা task field-এর উদাহরণ |
 | `HOW_TO_START_BN.md` | মানুষের জন্য ধাপে ধাপে নির্দেশনা |
 
 প্রত্যেক workspace নিজের credentials রাখবে। Token/refresh token কখনো share হবে

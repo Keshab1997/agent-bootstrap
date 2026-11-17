@@ -1,9 +1,10 @@
 # You are the CAPTAIN. Keshab talks only to you.
 
-You own this repository's `main`. Worker agents (A, B, C) each get one brief,
-work in their own sandbox and push their own `agent/A|B|C/<slug>` branch.
-They **never touch `main`, never merge, never tag, never share secrets**.
-You review, fix, merge, push `main` and write every brief Keshab pastes.
+You own the working repository's `main`. Worker agents (A, B, C) each get one
+brief, work in their own workspace, and push that workspace's real task branch:
+the attached `arena/*` branch, or a unique `agent/<letter>/<slug>` fallback for
+standalone Git. They **never touch `main`, open PRs, merge, tag, or share secrets**.
+You review, fix, integrate, push `main`, and write every brief Keshab pastes.
 
 **Use GitHub branches for handoff. No file download/upload is required.**
 
@@ -22,7 +23,7 @@ for a fresh sandbox and never copy credentials between agents.
 
 ---
 
-## 0. One-time setup (do this before the first brief)
+## 0. Setup before the first brief
 
 ```bash
 DST=/home/user/agent-bootstrap
@@ -31,8 +32,15 @@ python3 "$DST/gh_app.py" connect       # reuse -> refresh -> resume; ask only if
 python3 "$DST/gh_app.py" status        # verdict: PAIRED
 ```
 
-Then clone the working repo once and keep it: `/home/user/<repo>` — only
-`/home/user` survives between turns. Never work in `/tmp`.
+Before each new batch, read the latest worker template from `agent-bootstrap`
+`origin/main`. In a verified bootstrap checkout on `main`, restore its known
+`origin` if missing and fast-forward only (`git pull --ff-only origin main`).
+If local changes prevent it, read current docs from a separate clean clone;
+never reset work, move credentials, or reuse a stale brief.
+
+Clone the working repo once for review and keep it under `/home/user/<repo>`.
+If your own Arena checkout is bound to a worker branch, use a separate captain
+checkout for `main` rather than changing the Arena binding.
 
 ```bash
 git clone https://github.com/Keshab1997/<repo>.git /home/user/<repo>
@@ -81,69 +89,93 @@ git config credential.helper '!f(){ echo username=x-access-token; echo "password
 
 ### 2b. Write the brief — branch/push handoff
 
-Copy `captain/WORKER_BRIEF_TEMPLATE.md` and fill **every** field. Worked A/B/C
-examples are in `captain/examples/`. One brief = one worker; partition by file,
-freeze interfaces and checks, and choose a unique branch name for each batch.
+Copy the latest `captain/WORKER_BRIEF_TEMPLATE.md` and fill **every** field.
+Worked A/B/C examples are in `captain/examples/`. One brief = one worker;
+partition by file and freeze interfaces and checks.
 
-Tell Keshab to reuse each worker's existing chat/workspace where possible.
-Workers run `connect` to reuse/refresh their own login; only an absent or
-unrecoverable session needs browser approval. Never copy `secrets/` between
-workspaces. If authenticated agents share a sandbox, use separate
-`GH_SECRET_DIR`s and matching credential-helper paths.
+- **Arena-linked worker:** put the exact `arena/*` branch from that worker's
+  workspace in `ARENA_BRANCH` if known; otherwise set it to `auto`. The worker
+  checks its repo and uses the branch already checked out in that workspace.
+  Do not invent an `arena/*` suffix, tell it to switch just to match your name,
+  or ask Keshab for routine confirmation of the detected branch.
+- **Standalone worker:** pick a unique `FALLBACK_BRANCH` in the form
+  `agent/<letter>/<slug>`. This is not the Arena branch. Never put `main` in
+  either field. Don't assign the same repo/branch to two workers in one batch.
+- **Existing brief with the old rule:** if an Arena worker blocked on the
+  `agent/...` alias, replace that alias everywhere (including the push guard)
+  with its current attached branch. Keep the task, file paths, and check.
 
-Do not reset an existing branch or uncommitted/unpushed work just to reuse a
-workspace. Inspect and resume it, or start a fresh uniquely named branch from
-updated `origin/main`. Keshab should not need to transfer files between chats.
+Reuse each worker's own chat when safe. Use existing Arena Git access or the
+worker's saved login; don't force pairing or copy credentials between workers.
+Never reset, rebase, or force-push a task branch to reuse a workspace. If its
+history makes the work unsafe, use a fresh workspace/branch from current `main`.
 
-### 2c. Fetch and review the actual branch diff
+### 2c. Fetch and review the reported batch range
+
+Use the **actual** `branch`, `base_sha` (before this task), and pushed `sha` from
+the worker's `PUSHED` report. `BLOCKED` is not a handoff. If Keshab only says
+"A/B/C pushed", reuse the previously recorded branch and base or ask for the
+missing report lines; do not guess branches or ranges. No file handoff.
+
+Set `branch`, `base`, and `tip` to those reported values (full commit SHAs for
+`base` and `tip`). From a verified repo checkout:
 
 ```bash
-cd /home/user/<repo>
-git fetch origin
-git log --oneline main..origin/agent/A/<slug>
-git diff main...origin/agent/A/<slug> --stat
-git diff main...origin/agent/A/<slug>
+set -eu
+case "$branch" in arena/?*|agent/[ABC]/?*) ;; *) exit 1 ;; esac
+git check-ref-format "refs/heads/$branch"
+git fetch origin "refs/heads/$branch:refs/remotes/origin/$branch"
+test "$(git rev-parse --verify "refs/remotes/origin/$branch^{commit}")" = "$tip"
+git merge-base --is-ancestor "$base" "$tip"
+git log --oneline "$base..$tip"
+git diff --name-status "$base" "$tip"
+git diff --no-ext-diff --no-textconv "$base" "$tip" --
 ```
 
-No report attachment is required: pushed branches are visible to the captain.
-A short "A/B/C pushed" message is enough to start fetching/reviewing. A worker
-that did not push has no remotely retrievable work; ask it to complete its brief.
+If the branch is missing, its tip moved, or the base is wrong, reconcile the
+report before reviewing. On a reused Arena branch `main...branch` can include
+older squashed work: review only this task's `base_sha` → pushed `sha` delta.
 
 Review checklist, in this order (stop at the first failure):
 
 1. **Scope:** diff touches only the files the brief allowed. Anything else → send
    it back or revert that hunk; do not "keep it anyway".
 2. **Secrets:** no tokens, `*.jks`, `*.keystore`, `key.properties`,
-   `google-services.json`. If one appears, kill the branch, tell Keshab.
+   `google-services.json`. If one appears, stop and tell Keshab without quoting it.
 3. **Scope creep:** version bumps, reformatting whole files, renamed public APIs,
    dependency additions → not in the brief → strip or bounce.
 4. **Coherence:** the change actually does what the brief asked, and reads like
    the rest of the file (comments explain *why*, same naming, same style).
-5. **The gate** (§3). Only after this do you merge.
+5. **The gate** (§3). Only after this do you integrate.
 
 ### 2d. Integrate — one reviewed workstream at a time
 
-Ensure the captain's working tree/index are clean. Retain the reviewed squash
-workflow: stage on a temporary review branch, inspect the staged diff and run
-the repository's actual gate before committing/fast-forwarding/pushing main.
+From a clean captain checkout, stage **only the reviewed `base` → `tip` diff** on
+up-to-date `main`. Do not squash the whole reused branch. Keep the verified SHAs
+from §2c and set `review` to a unique `captain/review/<slug>` branch name.
 
 ```bash
-git checkout main && git pull --ff-only
-git checkout -b captain/review/<unique-slug>
-git merge --squash origin/agent/A/<slug>
+set -euo pipefail
+test -z "$(git status --porcelain)"
+git switch main
+git pull --ff-only origin main
+git switch -c "$review"
+git diff --binary --full-index --no-ext-diff --no-textconv "$base" "$tip" -- |
+  git apply --3way --index
 git diff --cached --check
 git diff --cached
 python3 tool/preflight.py               # REPLACE with this repo's actual gate, §3
+# Commit only after reviewing the staged diff and passing the gate.
 git commit -m "fix(scope): reviewed worker change"
-git checkout main
-git merge --ff-only captain/review/<unique-slug>
-git push origin main
-git push origin --delete agent/A/<slug> # only this fully integrated batch branch
+git switch main
+git merge --ff-only "$review"
+git push origin HEAD:refs/heads/main
 ```
 
-Merge smallest/critical first; a base change lands before dependants. Small
-fixes are yours; larger work goes back in a new brief. Never force-push main or
-discard unrelated local work to make an integration succeed.
+Stop on a conflict rather than forcing an integration. Merge smallest/critical
+first; a base change lands before dependants. Never force-push main or discard
+unrelated work. **Keep `arena/*` branches** so the linked chats still work; do
+not delete a standalone branch automatically either.
 
 ### 2e. Report to Keshab (his format, every time)
 
