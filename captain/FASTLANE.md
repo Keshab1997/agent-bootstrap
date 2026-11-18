@@ -87,7 +87,11 @@ Flutter is skipped for other profiles. On Linux x86-64 a cold SDK is from
 Google's official manifest/archive with SHA-256 verification; an exact
 trusted SDK on PATH or a valid local cache is reused. The warmed SDK and pub
 cache live under `/var/tmp/agent-bootstrap-flutter-<uid>`, not in the repo.
-Arena can discard that cache between turns or chats.
+Arena can discard that cache between turns or chats. If an attached Arena
+sandbox blocks outbound TLS to `storage.googleapis.com`, report `BLOCKED`; the
+Captain can publish a newly pinned `task.json` with `{"kind":"preflight"}` for
+the worker checkpoint and run the full Flutter gate during Captain review before
+landing (workers never edit `task.json` themselves).
 
 ## 3. Captain: verify, review, then assign the next task
 

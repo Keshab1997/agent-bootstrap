@@ -195,6 +195,30 @@ if 'FIXTURE_FAILS' in environ:
         with mock.patch.dict(os.environ, FIXTURE_FAILS='1'):
             with self.assertRaisesRegex(work.LaneError, 'exit 7'):
                 lane.check()
+
+    def test_captain_check_profile_revision_preserves_edits_without_widening_scope(self):
+        bound = self.attach()
+        initial = task('flutter-blocked', ('lesson.txt', 'test/example_test.dart'),
+                       arena={'branch': 'auto', 'base_sha': self.base},
+                       check={'kind': 'flutter', 'version': '3.50.0', 'test': 'test/example_test.dart'})
+        self.lane(initial, bound).start()
+        self.write('lesson.txt', 'saved worker fix\n', bound)
+        revised = initial | {'check': {'kind': 'preflight'}}
+        lane = self.lane(revised, bound)
+        # diff/publish still reject an un-checked revision; scope/commit changes always fail.
+        with self.assertRaisesRegex(work.LaneError, 'Task spec'):
+            lane.publish()
+        with self.assertRaisesRegex(work.LaneError, 'Task spec'):
+            self.lane(revised | {'commit': 'tampered'}, bound).check()
+        with self.assertRaisesRegex(work.LaneError, 'Task spec'):
+            self.lane(revised | {'allowed': ['lesson.txt']}, bound).check()
+        checked = lane.check()
+        self.assertEqual(checked['check_result'], 'preflight passed')
+        done = lane.publish()
+        self.assertIn('saved worker fix', self.reviewed_diff(lane, done))
+        # Once committed/pushed, check profile cannot change either.
+        with self.assertRaisesRegex(work.LaneError, 'Task spec'):
+            self.lane(initial, bound).check()
         with self.assertRaisesRegex(work.LaneError, 'Run check successfully'):
             lane.publish()
         with mock.patch.dict(os.environ, FIXTURE_MUTATES='1'):

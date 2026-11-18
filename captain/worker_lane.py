@@ -272,12 +272,26 @@ class Lane:
         if not ok or self.git('check-ref-format', 'refs/heads/' + branch, check=False).returncode:
             raise LaneError('Wrong or detached task branch. Leave the checkout and its Arena binding alone.')
 
-    def load(self):
+    def load(self, *, allow_check_revision=False):
         if not self.state_file.is_file():
             raise LaneError('Task is not started. Run start with the original Captain task JSON.')
         state = json.loads(self.state_file.read_text())
-        if (state.get('task') != self.task or not isinstance(state.get('branch'), str)
-                or not is_sha(state.get('base_sha'))):
+        saved = state.get('task')
+        if saved != self.task:
+            can_revise = (
+                allow_check_revision
+                and isinstance(saved, dict)
+                and not state.get('pushed')
+                and not state.get('commit')
+                and {k: v for k, v in saved.items() if k != 'check'}
+                == {k: v for k, v in self.task.items() if k != 'check'}
+            )
+            if not can_revise:
+                raise LaneError('Task spec or saved state changed. Keep the original or ask for a new task ID.')
+            state['task'] = self.task
+            state.pop('checked_tree', None)
+            state.pop('check_result', None)
+        if not isinstance(state.get('branch'), str) or not is_sha(state.get('base_sha')):
             raise LaneError('Task spec or saved state changed. Keep the original or ask for a new task ID.')
         self.ensure_checkout()
         self.check_branch(state['branch'])
@@ -428,7 +442,7 @@ class Lane:
         return ('preflight passed; ' if preflight else '') + f'Flutter {version}: {test} passed', snapshot
 
     def check(self):
-        state = self.load()
+        state = self.load(allow_check_revision=True)
         if state.get('pushed') or state.get('commit'):
             raise LaneError('A commit is already recorded. Retry publish, not another edit.')
         if self.active_head() != state['base_sha'] or self.git('diff', '--cached', '--quiet', check=False).returncode:
