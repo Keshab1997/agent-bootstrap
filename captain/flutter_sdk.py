@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import hashlib
+from http.client import HTTPException
 import json
 import os
 from pathlib import Path
@@ -18,14 +19,25 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from urllib.request import urlopen
+import time
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 BASE_URL = 'https://storage.googleapis.com/flutter_infra_release/releases/'
 VERSION = re.compile(r'[1-9][0-9]*\.[0-9]+\.[0-9]+\Z')
+CONTENT_RANGE = re.compile(r'bytes ([0-9]+)-([0-9]+)/([0-9]+|\*)\Z')
 CACHE = Path('/var/tmp') / f'agent-bootstrap-flutter-{os.getuid()}'
+CHUNK_BYTES = 1024 * 1024
+MAX_STALLS = 5
+MAX_SEGMENTS = 32
+RETRYABLE_HTTP = frozenset({408, 429, 500, 502, 503, 504})
 
 
 class SDKError(RuntimeError):
+    pass
+
+
+class _LocalWriteError(Exception):
     pass
 
 
@@ -77,20 +89,146 @@ def prepare_cache(cache):
         raise SDKError(f'Refusing to use a non-private Flutter cache: {cache}')
 
 
-def open_official(url, timeout):
-    response = urlopen(url, timeout=timeout)
-    if response.geturl() != url:
+def retryable(exc):
+    if isinstance(exc, SDKError):
+        return False
+    if isinstance(exc, HTTPError):
+        return exc.code in RETRYABLE_HTTP
+    return isinstance(exc, (OSError, EOFError, HTTPException))
+
+
+def open_official(url, timeout, offset=0):
+    target = url if offset == 0 else Request(
+        url, headers={'Range': f'bytes={offset}-', 'Connection': 'close'})
+    response = urlopen(target, timeout=timeout)
+    try:
+        actual = response.geturl()
+    except Exception:
+        response.close()
+        raise
+    if actual != url:
         response.close()
         raise SDKError('Unexpected redirect from the official Flutter download URL.')
     return response
 
 
+def fetch_manifest(url):
+    for attempt in range(1, MAX_STALLS + 1):
+        try:
+            with open_official(url, timeout=30) as stream:
+                raw = stream.read()
+            break
+        except Exception as exc:
+            if isinstance(exc, HTTPError):
+                exc.close()
+            if not retryable(exc) or attempt >= MAX_STALLS:
+                raise
+            time.sleep(min(2 ** (attempt - 1), 8))
+    return json.loads(raw.decode('utf-8'))
+
+
+def stream_bounds(response, offset):
+    headers = getattr(response, 'headers', None)
+    status = getattr(response, 'status', None)
+    raw_etag = (headers.get('ETag') or '').strip() if headers else ''
+    etag = raw_etag if raw_etag and not raw_etag.startswith('W/') else None
+    if offset > 0:
+        if status == 206:
+            raw_range = (headers.get('Content-Range') or '').strip() if headers else ''
+            match = CONTENT_RANGE.fullmatch(raw_range)
+            if not match:
+                raise SDKError('Official Flutter archive returned an invalid Content-Range header.')
+            start, end, total_raw = int(match.group(1)), int(match.group(2)), match.group(3)
+            total = None if total_raw == '*' else int(total_raw)
+            if start != offset or end < start or (total is not None and end >= total):
+                raise SDKError('Official Flutter archive returned an unexpected byte range.')
+            return offset, total, etag
+        if status not in (None, 200):
+            raise SDKError(f'Unexpected HTTP status {status} while resuming the official Flutter archive.')
+    total = None
+    if headers:
+        length = (headers.get('Content-Length') or '').strip()
+        if length:
+            if not length.isdigit():
+                raise SDKError('Official Flutter archive returned an invalid Content-Length header.')
+            total = int(length)
+    return 0, total, etag
+
+
 def download(url, filename, expected_sha):
+    # Resume across transient TLS/stream drops with HTTP Range, then verify the
+    # complete archive against the official manifest SHA-256 before unpacking.
     sha = hashlib.sha256()
-    with open_official(url, timeout=90) as source, filename.open('wb') as output:
-        while chunk := source.read(1024 * 1024):
-            sha.update(chunk)
-            output.write(chunk)
+    offset = 0
+    expected_total = None
+    expected_etag = None
+    stalls = 0
+    segments = 0
+    with filename.open('wb') as output:
+        while True:
+            segments += 1
+            before = offset
+            try:
+                with open_official(url, timeout=90, offset=offset) as source:
+                    start, total, etag = stream_bounds(source, offset)
+                    if start == 0 and offset > 0:
+                        try:
+                            output.seek(0)
+                            output.truncate()
+                        except OSError as exc:
+                            raise _LocalWriteError(exc) from exc
+                        sha = hashlib.sha256()
+                        offset = 0
+                        before = 0
+                        expected_total = None
+                        expected_etag = None
+                    if start > 0 and expected_etag and etag and etag != expected_etag:
+                        raise SDKError('Official Flutter archive changed mid-download. Nothing was installed.')
+                    if etag and expected_etag is None:
+                        expected_etag = etag
+                    if total is not None:
+                        if expected_total is not None and total != expected_total:
+                            raise SDKError('Official Flutter archive size changed mid-download. Nothing was installed.')
+                        expected_total = total
+                    while chunk := source.read(CHUNK_BYTES):
+                        try:
+                            output.write(chunk)
+                        except OSError as exc:
+                            raise _LocalWriteError(exc) from exc
+                        sha.update(chunk)
+                        offset += len(chunk)
+                        if expected_total is not None and offset > expected_total:
+                            raise SDKError('Official Flutter archive exceeded Content-Length. Nothing was installed.')
+                if expected_total is not None and offset < expected_total:
+                    raise EOFError(f'Official archive closed early at {offset}/{expected_total} bytes.')
+                break
+            except _LocalWriteError as exc:
+                raise exc.args[0] from exc
+            except Exception as exc:
+                if isinstance(exc, HTTPError):
+                    exc.close()
+                if not retryable(exc):
+                    raise
+                if offset > 0 and (expected_total is None or offset == expected_total) and sha.copy().hexdigest() == expected_sha:
+                    break
+                output.flush()
+                progressed = offset > before
+                stalls = 0 if progressed else stalls + 1
+                if stalls >= MAX_STALLS or segments >= MAX_SEGMENTS:
+                    raise SDKError(
+                        f'Official Flutter archive download failed after {segments} attempts '
+                        f'({offset} bytes received): {exc}'
+                    ) from exc
+                mib = offset / (1024 * 1024)
+                print(
+                    f'Retrying Flutter archive download from {mib:.1f} MiB '
+                    f'(attempt {segments + 1}, {exc.__class__.__name__})…',
+                    file=sys.stderr,
+                    flush=True,
+                )
+                time.sleep(0.5 if progressed else min(2 ** (stalls - 1), 8))
+    if expected_total is not None and offset != expected_total:
+        raise SDKError('Official Flutter archive length did not match Content-Length. Nothing was installed.')
     if sha.hexdigest() != expected_sha:
         raise SDKError('Official Flutter archive did not match the manifest SHA-256. Nothing was installed.')
 
@@ -98,8 +236,7 @@ def download(url, filename, expected_sha):
 def install(version, root, cache, env):
     # Extract and validate in private staging; never reuse a partial install.
     print(f'Installing Flutter {version} from the official archive (cold cache)…', file=sys.stderr, flush=True)
-    with open_official(BASE_URL + 'releases_linux.json', timeout=20) as stream:
-        url, digest = release(json.load(stream), version)
+    url, digest = release(fetch_manifest(BASE_URL + 'releases_linux.json'), version)
     with tempfile.TemporaryDirectory(prefix='.install-', dir=cache) as temp:
         temp = Path(temp)
         archive = temp / 'flutter.tar.xz'
@@ -135,7 +272,7 @@ def ensure_flutter(version, env, cache=CACHE):
             else:
                 install(version, root, cache, env)
         return root
-    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+    except (OSError, EOFError, ValueError, HTTPException, subprocess.SubprocessError) as exc:
         raise SDKError(f'Flutter {version} setup failed: {exc}') from exc
 
 

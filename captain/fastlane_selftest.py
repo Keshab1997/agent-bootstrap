@@ -385,3 +385,182 @@ class SDKTests(unittest.TestCase):
                         sdk.ensure_flutter(self.version, self.env, self.cache)
                 self.assertFalse((self.cache / self.version).exists())
                 self.assertEqual(list(self.cache.glob('.install-*')), [])
+
+    def test_resumes_across_tls_drops_and_short_streams(self):
+        import ssl
+        from urllib.error import URLError
+
+        payload = self.archive(self.version)
+        digest = hashlib.sha256(payload).hexdigest()
+        manifest_url = sdk.BASE_URL + 'releases_linux.json'
+        archive_url = sdk.BASE_URL + self.release_path
+        manifest = json.dumps({'releases': [{
+            'version': self.version, 'channel': 'stable', 'dart_sdk_arch': 'x64',
+            'archive': self.release_path, 'sha256': digest,
+        }]}).encode()
+        cut1 = max(1, len(payload) // 3)
+        cut2 = max(cut1 + 1, (2 * len(payload)) // 3)
+        ranges = []
+        manifest_calls = 0
+        archive_calls = 0
+
+        class FakeStream:
+            def __init__(self, url, body, *, status=200, headers=None, drop=None):
+                self._url = url
+                self._buf = io.BytesIO(body)
+                self.status = status
+                self.headers = headers or {}
+                self._drop = drop
+
+            def geturl(self):
+                return self._url
+
+            def read(self, size=-1):
+                data = self._buf.read(size)
+                if not data and self._drop is not None:
+                    err, self._drop = self._drop, None
+                    raise err
+                return data
+
+            def close(self):
+                self._buf.close()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                self.close()
+
+        def open_flaky(target, *, timeout):
+            nonlocal manifest_calls, archive_calls
+            url = target if isinstance(target, str) else target.full_url
+            if url == manifest_url:
+                manifest_calls += 1
+                if manifest_calls == 1:
+                    raise URLError(ssl.SSLEOFError('TLS EOF during manifest'))
+                return FakeStream(url, manifest)
+            self.assertEqual(url, archive_url)
+            archive_calls += 1
+            hdr_range = None if isinstance(target, str) else target.get_header('Range')
+            ranges.append(hdr_range)
+            if archive_calls == 1:
+                # Drops mid-stream with SSLEOFError after delivering payload[:cut1].
+                return FakeStream(
+                    url, payload[:cut1], status=200,
+                    headers={'Content-Length': str(len(payload)), 'ETag': '"v350"'},
+                    drop=ssl.SSLEOFError('EOF occurred in violation of protocol'),
+                )
+            if archive_calls == 2:
+                # Resumes at cut1, then closes silently before Content-Length at cut2.
+                self.assertEqual(hdr_range, f'bytes={cut1}-')
+                return FakeStream(
+                    url, payload[cut1:cut2], status=206,
+                    headers={'Content-Range': f'bytes {cut1}-{len(payload) - 1}/{len(payload)}', 'ETag': '"v350"'},
+                )
+            # Final segment delivers remaining bytes, then raises trailing SSLEOFError.
+            self.assertEqual(hdr_range, f'bytes={cut2}-')
+            return FakeStream(
+                url, payload[cut2:], status=206,
+                headers={'Content-Range': f'bytes {cut2}-{len(payload) - 1}/{len(payload)}', 'ETag': '"v350"'},
+                drop=ssl.SSLEOFError('trailing EOF without close_notify'),
+            )
+
+        with mock.patch.object(sdk, 'urlopen', side_effect=open_flaky), \
+                mock.patch.object(sdk, 'CHUNK_BYTES', 32), \
+                mock.patch.object(sdk.time, 'sleep'), \
+                contextlib.redirect_stderr(io.StringIO()):
+            location = sdk.ensure_flutter(self.version, self.env, self.cache)
+        self.assertEqual(location, self.cache / self.version)
+        self.assertEqual(manifest_calls, 2)
+        self.assertEqual(ranges, [None, f'bytes={cut1}-', f'bytes={cut2}-'])
+
+    def test_resume_handles_200_fallback_and_rejects_bad_range_or_404(self):
+        import ssl
+        from urllib.error import HTTPError
+
+        payload = self.archive(self.version)
+        digest = hashlib.sha256(payload).hexdigest()
+        manifest_url = sdk.BASE_URL + 'releases_linux.json'
+        archive_url = sdk.BASE_URL + self.release_path
+        manifest = json.dumps({'releases': [{
+            'version': self.version, 'channel': 'stable', 'dart_sdk_arch': 'x64',
+            'archive': self.release_path, 'sha256': digest,
+        }]}).encode()
+        cut = max(1, len(payload) // 2)
+
+        class Resp(io.BytesIO):
+            def __init__(self, url, body, status=200, headers=None, drop=False):
+                super().__init__(body)
+                self._url = url
+                self.status = status
+                self.headers = headers or {}
+                self._drop = drop
+
+            def geturl(self):
+                return self._url
+
+            def read(self, size=-1):
+                chunk = super().read(size)
+                if not chunk and self._drop:
+                    self._drop = False
+                    raise ssl.SSLEOFError('drop')
+                return chunk
+
+        # 1) Server ignores Range and replies 200 with full body -> clean restart & install.
+        step = 0
+
+        def fallback_200(target, *, timeout):
+            nonlocal step
+            url = target if isinstance(target, str) else target.full_url
+            if url == manifest_url:
+                return Resp(url, manifest)
+            step += 1
+            if step == 1:
+                return Resp(url, payload[:cut], 200, {'Content-Length': str(len(payload))}, drop=True)
+            return Resp(url, payload, 200, {'Content-Length': str(len(payload))})
+
+        cache_ok = self.root / 'cache-200'
+        with mock.patch.object(sdk, 'urlopen', side_effect=fallback_200), \
+                mock.patch.object(sdk.time, 'sleep'), \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(sdk.ensure_flutter(self.version, self.env, cache_ok), cache_ok / self.version)
+        self.assertEqual(step, 2)
+
+        # 2) ETag swap on 206 is rejected without publishing.
+        etag_step = 0
+
+        def swapped_etag(target, *, timeout):
+            nonlocal etag_step
+            url = target if isinstance(target, str) else target.full_url
+            if url == manifest_url:
+                return Resp(url, manifest)
+            etag_step += 1
+            if etag_step == 1:
+                return Resp(url, payload[:cut], 200, {'Content-Length': str(len(payload)), 'ETag': '"a"'}, drop=True)
+            return Resp(url, payload[cut:], 206,
+                        {'Content-Range': f'bytes {cut}-{len(payload) - 1}/{len(payload)}', 'ETag': '"b"'})
+
+        with mock.patch.object(sdk, 'urlopen', side_effect=swapped_etag), \
+                mock.patch.object(sdk.time, 'sleep'), \
+                contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaisesRegex(sdk.SDKError, 'changed mid-download'):
+                sdk.ensure_flutter(self.version, self.env, self.cache)
+        self.assertFalse((self.cache / self.version).exists())
+
+        # 3) HTTP 404 is not retried.
+        calls_404 = 0
+
+        def missing(target, *, timeout):
+            nonlocal calls_404
+            url = target if isinstance(target, str) else target.full_url
+            if url == manifest_url:
+                return Resp(url, manifest)
+            calls_404 += 1
+            raise HTTPError(url, 404, 'Not Found', {}, io.BytesIO())
+
+        with mock.patch.object(sdk, 'urlopen', side_effect=missing), \
+                mock.patch.object(sdk.time, 'sleep'), \
+                contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(sdk.SDKError):
+                sdk.ensure_flutter(self.version, self.env, self.cache)
+        self.assertEqual(calls_404, 1)
