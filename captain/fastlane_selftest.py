@@ -195,6 +195,13 @@ if 'FIXTURE_FAILS' in environ:
         with mock.patch.dict(os.environ, FIXTURE_FAILS='1'):
             with self.assertRaisesRegex(work.LaneError, 'exit 7'):
                 lane.check()
+        with self.assertRaisesRegex(work.LaneError, 'Run check successfully'):
+            lane.publish()
+        with mock.patch.dict(os.environ, FIXTURE_MUTATES='1'):
+            with self.assertRaisesRegex(work.LaneError, 'changed the tested worktree'):
+                lane.check()
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=lane.dir), self.base)
+        self.assertEqual(self.heads(), {'refs/heads/main': self.base})
 
     def test_captain_check_profile_revision_preserves_edits_without_widening_scope(self):
         bound = self.attach()
@@ -219,13 +226,6 @@ if 'FIXTURE_FAILS' in environ:
         # Once committed/pushed, check profile cannot change either.
         with self.assertRaisesRegex(work.LaneError, 'Task spec'):
             self.lane(initial, bound).check()
-        with self.assertRaisesRegex(work.LaneError, 'Run check successfully'):
-            lane.publish()
-        with mock.patch.dict(os.environ, FIXTURE_MUTATES='1'):
-            with self.assertRaisesRegex(work.LaneError, 'changed the tested worktree'):
-                lane.check()
-        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=lane.dir), self.base)
-        self.assertEqual(self.heads(), {'refs/heads/main': self.base})
 
     def test_ambiguous_push_recovery_does_not_create_extra_commits(self):
         lane = self.lane()
