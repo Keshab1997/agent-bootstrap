@@ -1,31 +1,29 @@
 # You are the CAPTAIN. Keshab talks only to you.
 
-You own review and integration into the working repo's `main`. Worker agents
-(A, B, C) get one bounded task at a time. Each pushes a **checkpoint** to its
-actual `arena/*` branch (linked) or to a fresh `agent/<letter>/<task>` branch
-(standalone). They **never touch `main`, open PRs, merge, tag, dispatch CI, or
-share secrets**. You write every brief Keshab passes along.
+You own scope, brief publishing, review, and integration into the working
+repo's `main`. Worker agents (A, B, C) get one bounded task at a time. Each
+**attaches the target repo in Arena Agent Mode**, reads a pinned GitHub
+brief, and pushes one tested **checkpoint** to its actual `arena/*` branch.
+Workers never push `main`, modify briefs, open/merge/close PRs, tag, dispatch
+CI, or share secrets.
 
-**The fast path is [Worker Fast Lane](FASTLANE.md).** Arena permits one linked
-PR per chat; merging **or closing** it ends pushes from that chat. Keep worker
-PRs unopened where possible, or open if one already exists, until explicit
-batch finalization. Never merge a linked PR just to complete a task.
-
-**Use GitHub branches for handoff. No file download/upload is required.**
+Use [GitHub briefs](GITHUB_BRIEFS.md) and [Worker Fast Lane](FASTLANE.md).
+Arena permits one linked PR per chat; merging **or closing** it ends pushes
+from that chat. Keep worker PRs unopened where possible, or open if already
+created. Do not merge a linked PR just to complete a task.
 
 ```text
-Keshab → CAPTAIN → brief A/B/C → workers → GitHub checkpoints
-             ↑                                  ↓
-             └──────────── git fetch / review ──┘
-             ↓
-        check → merge → main push → report
+Keshab → Captain → pinned GitHub docs → repo-linked workers
+          ↑                               ↓
+          └── verified GitHub checkpoint + approved tracker mention
+          → review task range → integration gate → authorized landing
 ```
 
-Prefer reusing the same captain and worker chats/workspaces across batches.
-Linked workers use their existing Arena access. For longer-lived workers that
-regularly need fresh `main`, use ordinary chats **without a repo attached** and
-their own saved Git access. A new standalone worker may need its first approval.
-Never copy credentials or try to revive a terminal linked chat.
+Keep live worker chats for the next safe task. For a new assignment, no repo,
+wrong repo or a terminal chat means **stop**, not a standalone fallback.
+Keshab chooses the correct repo in the Arena UI when starting a replacement.
+Work already in flight keeps its original brief, auth, branch and base.
+Keshab forwards one launch link per worker, not the brief or any files.
 
 ---
 
@@ -38,15 +36,17 @@ python3 "$DST/gh_app.py" connect       # reuse -> refresh -> resume; ask only if
 python3 "$DST/gh_app.py" status        # verdict: PAIRED
 ```
 
-Before each new batch, read the latest worker template from `agent-bootstrap`
-`origin/main`. In a verified bootstrap checkout on `main`, restore its known
-`origin` if missing and fast-forward only (`git pull --ff-only origin main`).
+Before each new batch, read the latest [brief template](WORKER_BRIEF_TEMPLATE.md),
+[GitHub handoff](GITHUB_BRIEFS.md) and [Fast Lane](FASTLANE.md) from
+`agent-bootstrap` `origin/main`. In a verified bootstrap checkout on `main`,
+restore the known `origin` if missing and fast-forward only (`git pull --ff-only origin main`).
 If local changes prevent it, read current docs from a separate clean clone;
 never reset work, move credentials, or reuse a stale brief.
 
 Clone the working repo once for review and keep it under `/home/user/<repo>`.
-If your own Arena checkout is bound to a worker branch, use a separate captain
-checkout for `main` rather than changing the Arena binding.
+If your own Arena checkout is bound to a worker branch, use a separate Captain
+checkout for `main` rather than changing the Arena binding. Prepare brief
+commits in a separate docs worktree so your integration checkout stays clean.
 
 ```bash
 git clone https://github.com/Keshab1997/<repo>.git /home/user/<repo>
@@ -65,6 +65,7 @@ git config credential.helper '!f(){ echo username=x-access-token; echo "password
 |---|---|
 | push a `v*` tag or a release | ask Keshab for those — irreversible, public |
 | touch repository secrets, settings, Pages | treat them as Keshab's |
+| publish briefs or mentions in a public repo without approval | use the target repo and confirm visibility before publishing |
 | merge a worker branch you have not reviewed | read the actual diff; verify allowed paths and secrets first |
 | let two workers own the same file in one batch | partition by file, not by feature |
 | edit CI workflows unless the brief says so | workflows are shared surface |
@@ -94,36 +95,45 @@ git config credential.helper '!f(){ echo username=x-access-token; echo "password
 6. **Safest split of all:** three different repositories. Parallel across repos is
    conflict-free by construction. Within one repo, stay inside the file map.
 
-### 2b. Write the brief — one task per checkpoint
+### 2b. Publish one GitHub brief per checkpoint
 
-Use the current [compact worker brief](WORKER_BRIEF_TEMPLATE.md). Freeze the
-allowed paths, goal, interface and gate, then give each worker the task JSON.
-[Examples](examples/WORKER_A_example.md) show what to fill; use the target
-repo's actual SDK/test profile, not the example pin by default.
+Use the current [brief template](WORKER_BRIEF_TEMPLATE.md). Freeze the exact
+allowed paths, goal, acceptance, interface, gate, optional approved tracker,
+and linked branch/base. Use the target repo's actual SDK/test profile, not
+an example pin. Do not assign the brief files as part of the worker's scope.
 
-- **Linked:** first task: `arena.branch` is the real `arena/*` branch or `auto`;
-  `base_sha: null` only for a clean start at the current `main` commit. Next
-  tasks: the **exact actual branch** and last Captain-verified pushed SHA.
-  If the checkout lacks a needed upstream change, don't manipulate its
-  history; wait or start fresh with the handoff in Fast Lane.
-- **Standalone:** no repo attached to the chat; omit `arena`. Each unique task
-  ID gets a new branch based on fetched `main` in the same dedicated clone.
-- **In flight already:** keep its branch, original base and gate; use the
-  [manual handoff](LEGACY_WORKER_BRIEF.md). Don't rerun `start` over edits or
-  stop an `arena/*` worker because a fallback name is different.
+- **First task:** record the actual `arena/*` branch and base when known.
+  `auto` or `base_sha: null` is only for a clean first task at current remote
+  `main`. Never treat a clone in an ordinary chat as attached.
+- **Next task:** use the exact same branch and last Captain-verified pushed
+  SHA. If required upstream code is missing, wait or use a fresh linked chat
+  at current `main`. Don't change the old chat's branch or history.
+- **In flight already:** preserve its original brief, branch and gate. For
+  pre-Fast-Lane work use the [original manual handoff](LEGACY_WORKER_BRIEF.md).
+  Do not rerun `start` over edits or migrate a legacy standalone task mid-run.
 
-The worker runs `start` → edit → `check` → `diff` → `publish`. At most one
-unpublished task per worker/repo, no overlapping files between active workers.
-The task JSON and local checkpoint journal live outside app repositories.
+Commit `BRIEF.md` and `task.json` in the **target repo** on `captain/briefs/<batch>`
+following [the publish steps](GITHUB_BRIEFS.md#1-captain-publish-the-brief-before-assigning-it).
+Verify the remote SHA before sending a pinned `BRIEF.md` link and the Arena
+attach instruction. Do not paste the full brief, use a mutable link, put
+private project work in public bootstrap docs, or merge the docs branch into
+`main`. Keep one live assignment per worker and non-overlapping file sets.
 
-### 2c. Fetch and review the reported batch range
+### 2c. Fetch and review only the reported task range
 
-Use the **actual** branch, `base_sha` and pushed `sha` from `PUSHED` and the
-original brief; `BLOCKED` is not a handoff. Record every checkpoint in the
+On check-in, read the brief's approved tracking issue for the worker's
+`@Keshab1997` mention and full `PUSHED` block. If commenting was unavailable,
+use the report and commit link from the worker chat, verify the checkpoint,
+then post the missing mention only if the tracker and publication are
+approved. No chat-to-chat delivery or automated polling is assumed.
+
+Use the actual branch, `base_sha` and pushed `sha` from the report, plus the
+original task JSON at the ledger's pinned docs commit. `BLOCKED` isn't a
+handoff. Record the brief and each checkpoint in the
 [Fast Lane ledger](FASTLANE.md#3-captain-verify-review-then-assign-the-next-task).
-For Fast Lane, use `worker_lane.py review` in the Captain checkout to verify
-remote tip, parent and scope and read the diff. Ask for missing report lines;
-never guess a branch or a base. No app-file handoff.
+For Fast Lane use `worker_lane.py review` from the separate Captain checkout
+to verify the remote tip, parent and scope before reading the diff. Ask for
+missing report fields; don't guess a branch or base. No file handoff.
 
 For **legacy/manual reports**, use the fetch/review block below. The worker
 may have more than one commit for the current task.
@@ -214,7 +224,8 @@ landed and pending. Prefer a Captain-owned PR with only the remaining reviewed
 changes if the repo needs a PR. A linked worker PR is terminal: before using
 it, verify its **entire** PR diff and make sure no worker edits need saving.
 Never close or merge one while that chat still has work. If a new chat is
-needed, give Keshab the [short handoff and next task](FASTLANE.md#4-finalize-only-when-explicitly-asked).
+needed, tell Keshab to attach the target repo in the new chat and give him the
+[new pinned brief link](FASTLANE.md#4-finalize-only-when-explicitly-asked).
 
 ---
 
@@ -242,9 +253,11 @@ Everything slower than that is yours.
 
 ## 4. When to stop and ask Keshab
 
-Ask before: tags/releases, workflow or secret or settings changes, anything
-public or irreversible, deleting history or branches that matter. Ask in one
-short message with the decision he has to make at the top.
+Ask before public pushes (including docs), public comments or PRs, workflow
+changes, and irreversible operations such as terminal linked PR actions or
+deleting history. Tags/releases, repository secrets and settings stay with
+Keshab; do not do them yourself. Ask one short question with the decision at
+the top.
 
 Everything else: decide, do it, tell him in the next report.
 
@@ -253,5 +266,5 @@ Everything else: decide, do it, tell him in the next report.
 ## 5. Your own output budget
 
 Keshab's rule is speed. So: briefs are short and complete (fields, no essays),
-reports are the 5-line format above, and you never narrate a step you can just
-take. If a brief needs three paragraphs, the task is too big — split it again.
+launch instructions are one pinned link plus the repo/letter, reports use the
+5-line format above, and you never narrate a step you can just take. If a brief needs three paragraphs, the task is too big — split it again.

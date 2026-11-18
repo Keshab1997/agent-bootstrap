@@ -1,27 +1,27 @@
-# Captain: one chat per worker, multiple task checkpoints
+# Captain: GitHub briefs for Arena-linked workers
 
-Keshab works through the Captain. Up to three workers get disjoint file lists;
-workers publish tested branch checkpoints, and the Captain reviews only the
-reported base-to-tip range. No app-file download/upload between chats.
+Keshab gives work to one Captain. The Captain publishes up to three disjoint
+assignments at a time as pinned docs in the target repo. Workers attach that
+repo in Arena, read the brief from GitHub, and push tested checkpoints on their
+real `arena/*` branches. No brief or app file uploads between chats.
 
-**Do not merge or close a linked Arena PR per task.** That ends push access
-from its chat. Keep that branch for the next safe task; finalize at the end of
-the batch. An ordinary chat with no repo attached can instead use its own
-approved GitHub access and a fresh task branch per task.
-
-1. Start the Captain with [`CAPTAIN_START_PROMPT.md`](../CAPTAIN_START_PROMPT.md).
-2. Use [Fast Lane](FASTLANE.md) and the [compact brief](WORKER_BRIEF_TEMPLATE.md)
-   for new work. Resume old in-flight work without resetting it.
-3. Relay `AGENT … PUSHED` or `BLOCKED`. The Captain verifies, reviews, and
-   assigns the next brief without requiring a linked PR merge.
+1. Start with [`CAPTAIN_START_PROMPT.md`](../CAPTAIN_START_PROMPT.md).
+2. [Publish a brief](GITHUB_BRIEFS.md) and pass its one-line link to a worker
+   chat with the target repo attached. No new task in an unattached chat.
+3. Worker runs [Fast Lane](FASTLANE.md). After a verified push, the worker
+   mentions `@Keshab1997` on the approved tracker when permitted, or reports
+   `MENTION PENDING` in Arena. The Captain reviews only the task's exact range.
+4. Keep live Arena branches for the next safe checkpoint. **Merging or closing
+   a linked PR ends pushes from that chat**; finalize only when asked.
 
 | File | Purpose |
 |---|---|
 | [HOW_TO_START_BN.md](HOW_TO_START_BN.md) | মানুষের জন্য ধাপে ধাপে ব্যবহার |
-| [CAPTAIN_PROMPT.md](CAPTAIN_PROMPT.md) | Scope, review, integration, and finalization rules |
+| [CAPTAIN_PROMPT.md](CAPTAIN_PROMPT.md) | Scope, review, integration and finalization rules |
+| [WORKER_BRIEF_TEMPLATE.md](WORKER_BRIEF_TEMPLATE.md) | `BRIEF.md` + `task.json` template |
 | [`worker_lane.py`](worker_lane.py) | Start, check, diff, publish, and fetch-only review |
-| [`flutter_sdk.py`](flutter_sdk.py) | Exact Flutter SDK installation/reuse for Flutter profiles |
+| [`flutter_sdk.py`](flutter_sdk.py) | Pinned Flutter SDK setup for Flutter profiles |
 | [`examples/`](examples/) | Three compatible, file-disjoint example briefs |
-| [LEGACY_WORKER_BRIEF.md](LEGACY_WORKER_BRIEF.md) | Manual branch handoff for work already started |
+| [LEGACY_WORKER_BRIEF.md](LEGACY_WORKER_BRIEF.md) | Manual handoff only for work already started |
 
 No shared tokens, settings changes, releases, or manual CI dispatch by workers.

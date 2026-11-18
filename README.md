@@ -28,9 +28,9 @@ curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/set
 ## For AI agents — read this first
 
 Captains and standalone agents restore their own saved sessions. If you are
-a Captain worker, follow [Fast Lane](captain/FASTLANE.md) first: a linked worker
-uses its existing Arena access rather than starting this pairing flow. Reuse
-workspaces across batches; do not share credentials.
+a Captain worker, stop here and follow [Fast Lane](captain/FASTLANE.md): attach
+the target repo in Arena and read the pinned GitHub brief. Use Arena access,
+not this device flow. Reuse live workspaces; do not share credentials.
 
 1. **Run** `python3 gh_app.py connect`. It first reuses a working token, then
    tries the saved refresh token if access expired. Successful recovery prints
@@ -81,33 +81,34 @@ No new PAT, private key, server or repository setting is needed for this update.
 
 ---
 
-## Multiple agents — keep the worker chats, checkpoint each task
+## Multiple agents — GitHub briefs, Arena-linked work
 
-Start with [`CAPTAIN_START_PROMPT.md`](CAPTAIN_START_PROMPT.md) and use
-[**Worker Fast Lane**](captain/FASTLANE.md). The Captain assigns up to three
-file-disjoint [small briefs](captain/WORKER_BRIEF_TEMPLATE.md). `worker_lane.py`
-checks the actual checkout, runs the assigned gate, and commits and verifies the
-worker's push to its task branch. The Captain reviews only that task's exact
-base → pushed SHA, then integrates from a separate checkout.
+Start the Captain with [`CAPTAIN_START_PROMPT.md`](CAPTAIN_START_PROMPT.md).
+The Captain splits work by file and [publishes each brief](captain/GITHUB_BRIEFS.md)
+as `BRIEF.md` and `task.json` under `docs/agent-briefs/<batch>/<task>/` on the
+**target repo's** `captain/briefs/<batch>` branch. Workers get only a short
+launch line with the repo and a commit-pinned link.
 
-- **Linked Arena chats:** stay on the actual `arena/*` branch across tasks.
-  No PR per task. A linked chat gets one PR; after that PR is merged or
-  closed, that chat cannot push. Use the last verified tip for the next task,
-  and finalize only when the batch is finished. Follow the short handoff if
-  a new chat is needed.
-- **Ordinary chats without a repo attached:** use each worker's own GitHub
-  access and a separate `agent/<letter>/<task>` branch from fetched `main`
-  per task. No Arena-managed PR to close in that chat. A fresh standalone
-  workspace may need approval; never copy credentials.
+- In Arena Agent Mode, **attach the target repo** to each worker chat at the
+  start. No/wrong attachment blocks the task; no standalone workaround.
+- [Fast Lane](captain/FASTLANE.md) reads the pinned docs without changing the
+  attached branch. A worker checks and pushes only its real `arena/*` ref,
+  then mentions `@Keshab1997` in the approved tracking issue when authorized.
+  No comment access: `PUSHED` + `MENTION PENDING` in Arena. No verified push:
+  `BLOCKED` with the reason.
+- The Captain reviews the exact base → pushed SHA from a separate checkout.
+  Keep live linked PRs open; merging or closing one ends pushes from that
+  chat. Reuse the verified tip for the next safe task; finalize only when
+  asked. Preserve original terms for work already in flight.
 
-**No app-file downloads/uploads between chats.** Share only the worker's
-`PUSHED` report with the Captain. See the [Bengali walkthrough](captain/HOW_TO_START_BN.md).
+**No brief copy/paste or app-file downloads/uploads between chats.** See the
+[Bengali walkthrough](captain/HOW_TO_START_BN.md).
 
 ---
 
 ## Starting a fresh agent — one paste
 
-When a new agent session starts, hand it [`AGENT_START_PROMPT.md`](AGENT_START_PROMPT.md):
+For independent work, hand a new agent [`AGENT_START_PROMPT.md`](AGENT_START_PROMPT.md):
 pairing, the Flutter SDK step, the check-when-needed policy, the manual-CI rule
 and the sandbox's traps, all in one copy-paste block. A plain-text twin
 ([`PROMPT-FOR-NEW-AGENT.txt`](PROMPT-FOR-NEW-AGENT.txt)) and a one-click-copy

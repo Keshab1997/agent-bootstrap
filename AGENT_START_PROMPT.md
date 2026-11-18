@@ -12,18 +12,23 @@ the point**: never wait on CI, never run a check the change does not need.
 
 ## 0. Check your role and current branch first
 
-If you were given a Captain's A/B/C brief, use `captain/FASTLANE.md` and the
-brief for the branch, scope, checks, and push. The remaining direct-to-main
-instructions are only for standalone work expressly assigned to `main`.
-An active linked worker checkpoints its real `arena/*` branch without merging
-or closing its PR; doing either ends pushes from that chat. Standalone lane
-workers (no repo attached) use a fresh `agent/<letter>/<task>` per task. Do not
-start pairing just because a linked branch name differs from the brief.
+If this is a Captain A/B/C assignment, require the **target repo attached in
+Arena Agent Mode**. Use the Captain's pinned GitHub `BRIEF.md` link and
+`captain/FASTLANE.md` in a separate verified `Keshab1997/agent-bootstrap`
+clone. Read `BRIEF.md` and `task.json` at the same commit. Keep the actual
+`arena/*` branch and native Arena auth. Missing/wrong repo, missing pin, or
+a terminal linked PR means `BLOCKED`, not a clone or new pairing.
+
+For a Captain task, follow only Fast Lane, not the single-agent setup below.
+After verifying your checkpoint, mention `@Keshab1997` on the approved
+tracking issue, or report `MENTION PENDING` in Arena when you cannot comment.
+Do not merge or close the linked PR. The remaining direct-to-main instructions
+apply only to independent work explicitly assigned to `main`.
 
 ## 1. Restore GitHub access — approve only when recovery is not possible
 
 Skip this pairing setup if the task can use the workspace’s existing Git access.
-Captain workers follow the auth steps in their brief.
+Captain workers use only the attached repo’s existing Arena access.
 
 ```bash
 DST=/home/user/agent-bootstrap   # keep the session in this workspace between turns
@@ -54,8 +59,8 @@ python3 "$DST/gh_app.py" connect   # reuse token -> refresh -> reuse pending cod
   problem; let `connect` decide whether a new approval is actually necessary.
 - `/home/user/agent-bootstrap/secrets/` persists in **this workspace**, not every
   new chat/sandbox. An entirely fresh captain workspace still needs approval.
-  Reuse each worker's own workspace/login across batches; never share tokens.
-  Workers push their branches and the captain fetches them; no file handoff.
+  Reuse your own saved login for independent work across batches. Never share
+  tokens or copy them to linked workers; their Arena access is separate.
 
 ## 2. Flutter SDK — only for Dart work (Fast Lane runs its own pinned gate)
 
@@ -137,8 +142,9 @@ log first**, then fix.
 
 Small focused commits on the authorized branch with local SHA == remote SHA;
 checks matched to the change; manual CI only if Keshab dispatches it. A Captain
-worker reports `PUSHED`, actual branch, `base_sha`, pushed `sha`, and checks, or
-`BLOCKED` with the specific reason. Do not report unpushed work as done.
+worker reports the verified `PUSHED` block and pinned brief link on the
+approved tracker, or uses `MENTION PENDING` in Arena if unable to comment.
+When code has not pushed, report `BLOCKED` with the reason, not done.
 
 ✂ ═══════════════════════ COPY ENDS HERE ═══════════════════════ ✂
 
@@ -147,23 +153,22 @@ worker reports `PUSHED`, actual branch, `base_sha`, pushed `sha`, and checks, or
 ## Working with other agents — captain mode
 
 If Keshab hands you **`CAPTAIN_START_PROMPT.md`** instead of this file, you are the
-**captain**: you split the work into worker briefs and own review/merge/push.
-Workers use Fast Lane (`captain/FASTLANE.md`): checkpoint the real linked
-`arena/*` branch or a separate `agent/<letter>/<task>` branch in an ordinary
-chat. Do not merge/close a linked PR per task. Fetch and review the exact task
-range. Keshab transfers no files. Your playbook is `captain/CAPTAIN_PROMPT.md`;
-the brief is `captain/WORKER_BRIEF_TEMPLATE.md`.
+**captain**: publish task briefs in the target repo's GitHub docs, then send
+pinned links to workers with that repo attached in Arena. Workers checkpoint
+their real `arena/*` branch. The Captain reviews the exact range and owns
+integration. No file handoff and no linked PR merge/close per task. See the
+[Captain playbook](captain/CAPTAIN_PROMPT.md) and [GitHub briefs](captain/GITHUB_BRIEFS.md).
 
 ---
 
 ## সংক্ষিপ্ত version (চ্যাটে দ্রুত paste করার জন্য)
 
-> Clone Keshab1997/agent-bootstrap → **`/home/user/agent-bootstrap`**। Captain brief
-> থাকলে `captain/FASTLANE.md` পড়ো: চালু `arena/*` branch-এ task checkpoint push
-> করো, PR merge/close কোরো না। Repo attach না থাকলে আলাদা standalone task branch।
-> সরাসরি `main` শুধু তার জন্য আলাদা কাজ দিলে। `ALREADY CONNECTED` হলে authorization
-> চাইবে না; সত্যি code দেখালেই approve চাইবে। `AGENTS.md` পড়ে ঠিক করা check চালাও।
-> **CI-র জন্য অপেক্ষা কোরো না** — CI আমি চালাবো।
+> Captain task হলে Arena-তে কাজের repo attach করো। Captain-এর pinned GitHub brief
+> আর একই commit-এর `task.json` পড়ে `captain/FASTLANE.md` মেনে আসল `arena/*` branch-এ
+> push করো। Repo attach না থাকলে `BLOCKED`। Push যাচাই হলে অনুমোদিত issue-তে
+> `@Keshab1997` mention, না পারলে `MENTION PENDING`। PR merge/close কোরো না।
+> আলাদা single-agent কাজে `AGENTS.md` পড়ো; `main` শুধু স্পষ্ট অনুমতি পেলে।
+> Saved login থাকলে আবার approval চাইবে না। **CI আমি চালাবো** — অপেক্ষা কোরো না।
 
 ---
 

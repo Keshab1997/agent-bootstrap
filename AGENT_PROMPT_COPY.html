@@ -51,7 +51,7 @@
   </header>
 
   <div class="card">
-    <h2>১) পুরো prompt <span class="meta">(6073 অক্ষর, 119 লাইন)</span></h2>
+    <h2>১) পুরো prompt <span class="meta">(7383 অক্ষর, 140 লাইন)</span></h2>
     <p class="sub">এটাই paste করার আসল জিনিস — pairing, Flutter SDK, check policy, CI-r নিয়ম, sandbox ফাঁদ — সব একসাথে।</p>
     <div class="row">
       <button class="copy" id="btnFull" data-label="📋 পুরো prompt copy করো">📋 পুরো prompt copy করো</button>
@@ -64,18 +64,23 @@ the point**: never wait on CI, never run a check the change does not need.
 
 ## 0. Check your role and current branch first
 
-If you were given a Captain&#x27;s A/B/C brief, use `captain/FASTLANE.md` and the
-brief for the branch, scope, checks, and push. The remaining direct-to-main
-instructions are only for standalone work expressly assigned to `main`.
-An active linked worker checkpoints its real `arena/*` branch without merging
-or closing its PR; doing either ends pushes from that chat. Standalone lane
-workers (no repo attached) use a fresh `agent/&lt;letter&gt;/&lt;task&gt;` per task. Do not
-start pairing just because a linked branch name differs from the brief.
+If this is a Captain A/B/C assignment, require the **target repo attached in
+Arena Agent Mode**. Use the Captain&#x27;s pinned GitHub `BRIEF.md` link and
+`captain/FASTLANE.md` in a separate verified `Keshab1997/agent-bootstrap`
+clone. Read `BRIEF.md` and `task.json` at the same commit. Keep the actual
+`arena/*` branch and native Arena auth. Missing/wrong repo, missing pin, or
+a terminal linked PR means `BLOCKED`, not a clone or new pairing.
+
+For a Captain task, follow only Fast Lane, not the single-agent setup below.
+After verifying your checkpoint, mention `@Keshab1997` on the approved
+tracking issue, or report `MENTION PENDING` in Arena when you cannot comment.
+Do not merge or close the linked PR. The remaining direct-to-main instructions
+apply only to independent work explicitly assigned to `main`.
 
 ## 1. Restore GitHub access — approve only when recovery is not possible
 
 Skip this pairing setup if the task can use the workspace’s existing Git access.
-Captain workers follow the auth steps in their brief.
+Captain workers use only the attached repo’s existing Arena access.
 
 ```bash
 DST=/home/user/agent-bootstrap   # keep the session in this workspace between turns
@@ -106,8 +111,8 @@ python3 &quot;$DST/gh_app.py&quot; connect   # reuse token -&gt; refresh -&gt; r
   problem; let `connect` decide whether a new approval is actually necessary.
 - `/home/user/agent-bootstrap/secrets/` persists in **this workspace**, not every
   new chat/sandbox. An entirely fresh captain workspace still needs approval.
-  Reuse each worker&#x27;s own workspace/login across batches; never share tokens.
-  Workers push their branches and the captain fetches them; no file handoff.
+  Reuse your own saved login for independent work across batches. Never share
+  tokens or copy them to linked workers; their Arena access is separate.
 
 ## 2. Flutter SDK — only for Dart work (Fast Lane runs its own pinned gate)
 
@@ -189,25 +194,26 @@ log first**, then fix.
 
 Small focused commits on the authorized branch with local SHA == remote SHA;
 checks matched to the change; manual CI only if Keshab dispatches it. A Captain
-worker reports `PUSHED`, actual branch, `base_sha`, pushed `sha`, and checks, or
-`BLOCKED` with the specific reason. Do not report unpushed work as done.</textarea>
+worker reports the verified `PUSHED` block and pinned brief link on the
+approved tracker, or uses `MENTION PENDING` in Arena if unable to comment.
+When code has not pushed, report `BLOCKED` with the reason, not done.</textarea>
     <div class="status" id="stFull"></div>
   </div>
 
   <div class="card">
-    <h2>২) সংক্ষিপ্ত version <span class="meta">(523 অক্ষর)</span></h2>
-    <p class="sub">চ্যাটে দ্রুত paste করার ছোট ভার্সন — agent নিজে থেকেই AGENTS.md পড়ে বাকিটা বুঝে নেবে।</p>
+    <h2>২) সংক্ষিপ্ত version <span class="meta">(498 অক্ষর)</span></h2>
+    <p class="sub">চ্যাটে দ্রুত paste করার ছোট ভার্সন — Captain task হলে আলাদা করে pinned brief link দিন।</p>
     <div class="row">
       <button class="copy small" id="btnShort" data-label="📋 সংক্ষিপ্তটা copy করো">📋 সংক্ষিপ্তটা copy করো</button>
     </div>
     <textarea id="shortBox" readonly spellcheck="false">(চ্যাটে দ্রুত paste করার জন্য)
 
-Clone Keshab1997/agent-bootstrap → **`/home/user/agent-bootstrap`**। Captain brief
-থাকলে `captain/FASTLANE.md` পড়ো: চালু `arena/*` branch-এ task checkpoint push
-করো, PR merge/close কোরো না। Repo attach না থাকলে আলাদা standalone task branch।
-সরাসরি `main` শুধু তার জন্য আলাদা কাজ দিলে। `ALREADY CONNECTED` হলে authorization
-চাইবে না; সত্যি code দেখালেই approve চাইবে। `AGENTS.md` পড়ে ঠিক করা check চালাও।
-**CI-র জন্য অপেক্ষা কোরো না** — CI আমি চালাবো।</textarea>
+Captain task হলে Arena-তে কাজের repo attach করো। Captain-এর pinned GitHub brief
+আর একই commit-এর `task.json` পড়ে `captain/FASTLANE.md` মেনে আসল `arena/*` branch-এ
+push করো। Repo attach না থাকলে `BLOCKED`। Push যাচাই হলে অনুমোদিত issue-তে
+`@Keshab1997` mention, না পারলে `MENTION PENDING`। PR merge/close কোরো না।
+আলাদা single-agent কাজে `AGENTS.md` পড়ো; `main` শুধু স্পষ্ট অনুমতি পেলে।
+Saved login থাকলে আবার approval চাইবে না। **CI আমি চালাবো** — অপেক্ষা কোরো না।</textarea>
     <div class="status" id="stShort"></div>
   </div>
 
@@ -215,8 +221,8 @@ Clone Keshab1997/agent-bootstrap → **`/home/user/agent-bootstrap`**। Captain
     <h2>ব্যবহারের নিয়ম</h2>
     <ol>
       <li><b>Copy</b> চেপে Notepad-এ paste → save (যেমন <code>new-agent-prompt.txt</code>)।</li>
-      <li>নতুন agent-কে prompt-টা paste করে দিন, সাথে যে repo-তে কাজ হবে তার নাম বলুন।</li>
-      <li>Agent আগে saved session/refresh চেষ্টা করবে। code দেখালেই শুধু https://github.com/login/device এ approve করবেন।</li>
+      <li>Captain worker হলে Arena-তে কাজের repo attach করে pinned brief link দিন। আলাদা কাজে prompt ও repo-র নাম দিন।</li>
+      <li>Linked worker Arena access ব্যবহার করবে। আলাদা কাজে agent saved session/refresh আগে চেষ্টা করবে; code দেখালেই শুধু https://github.com/login/device এ approve করুন।</li>
       <li><b>আগে থেকে paired থাকলে</b> agent কোনো code দেখাবে না — সেটাই ঠিক। ও "ALREADY CONNECTED" পেলে আর authorize চাইবে না।</li>
       <li>সময় লাগে শুধু দুই জায়গায়: আপনার approval-এর অপেক্ষা, আর (Dart কাজ হলে) ৫০ সেকেন্ডের Flutter SDK। বাকি সব fast path-এ।</li>
     </ol>

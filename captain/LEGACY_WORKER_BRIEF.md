@@ -1,4 +1,4 @@
-> **In-flight manual briefs only.** For new tasks use [Worker Fast Lane](FASTLANE.md) and its [compact brief](WORKER_BRIEF_TEMPLATE.md). Do not merge or close an Arena-linked PR as a task handoff.
+> **In-flight manual briefs only.** For new tasks use [GitHub briefs](GITHUB_BRIEFS.md) and [Fast Lane](FASTLANE.md) in a repo-linked Arena chat. Keep original scopes and branches for work already started. Never merge or close an Arena-linked PR just for handoff.
 
 # WORKER BRIEF TEMPLATE — use the workspace's real branch
 #

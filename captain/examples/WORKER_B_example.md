@@ -1,7 +1,10 @@
 # Example task — Agent B
 
-Fill into the [compact brief](../WORKER_BRIEF_TEMPLATE.md). First linked task; `null` is only valid when the attached branch HEAD is at current `main`.
-Use a confirmed compatible Flutter pin; the version here is illustrative.
+Use the [GitHub brief template](../WORKER_BRIEF_TEMPLATE.md) in `Keshab1997/docify`.
+First task with that repo attached in Arena; `null` is valid only when the
+attached branch is at current `main`. Put the prose in `BRIEF.md` (with
+the approved tracking issue if available) and the JSON in `task.json`.
+Use a confirmed compatible Flutter pin; this version is illustrative.
 
 **Goal and acceptance:** Read the Paywall strings from `app_strings.dart`; preserve the existing English UI and test it.
 

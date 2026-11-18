@@ -18,12 +18,14 @@ Give it the copy-paste block in **`AGENT_START_PROMPT.md`** — it is the whole
 onboarding (pairing, Flutter SDK, check policy, CI-is-manual, sandbox traps)
 in one paste. This RESUME.md is the longer version for an agent already inside
 the workspace. For a Captain batch, refresh `agent-bootstrap` from `origin/main`
-without discarding local work, then use [Fast Lane](captain/FASTLANE.md) and the
-[compact brief](captain/WORKER_BRIEF_TEMPLATE.md). An active linked worker keeps
-its own `arena/*` branch and checkpoints tasks. Use the last verified tip as the
-next base once the Captain has reviewed it. A linked PR merge/close is terminal;
-use the handoff in Fast Lane for a fresh chat. Do not pair or re-clone to revive
-that linked chat. Resume an in-flight manual brief without changing its base.
+without discarding local work. Use [GitHub briefs](captain/GITHUB_BRIEFS.md) and
+[Fast Lane](captain/FASTLANE.md): attach the target repo in Arena, read the
+pinned GitHub brief, and checkpoint the real `arena/*` branch. After a verified
+push mention `@Keshab1997` in the approved tracker, or mark `MENTION PENDING`
+if comment access is unavailable. Use the last Captain-verified tip as the
+next base. A linked PR merge/close is terminal; open a new correctly attached
+chat with a new pinned link. Do not pair or re-clone to revive the old chat.
+Resume in-flight work without changing its original branch, base or gate.
 
 ## Check policy (agent pack v1.13.1) — do not backslide
 
@@ -47,8 +49,9 @@ that linked chat. Resume an in-flight manual brief without changing its base.
   export PATH=/var/tmp/flutter/bin:$PATH PUB_CACHE=/var/tmp/pub-cache
   ```
 
-- A clone can lose **`.git/config`** between turns (snapshot excludes it) — the
-  remote vanishes. Fix without re-cloning:
+- A clone can lose **`.git/config`** between turns (snapshot excludes it). The
+  following is for the Captain’s own or independent standalone checkout,
+  not an Arena worker. Do not install an OAuth helper in a linked checkout:
 
   ```bash
   git remote add origin https://github.com/Keshab1997/<repo>.git

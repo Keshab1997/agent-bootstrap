@@ -31,18 +31,21 @@ if you can't fast-forward safely, read the docs from a fresh read-only clone.
 ```bash
 test "$(git -C "$DST" branch --show-current)" = main &&
   git -C "$DST" -c core.fileMode=false pull --ff-only origin main &&
-  cat "$DST/captain/CAPTAIN_PROMPT.md"
+  cat "$DST/captain/CAPTAIN_PROMPT.md" "$DST/captain/GITHUB_BRIEFS.md"
 ```
 
 Follow it exactly. It makes you the single point of contact:
 
-- split his work by file using the current `captain/WORKER_BRIEF_TEMPLATE.md`
-  and `captain/FASTLANE.md`;
-- keep active Arena-linked workers on their real `arena/*` branches. Each task
-  is a verified checkpoint. Reuse the exact previous tip for the next safe
-  task; do not merge or close a linked PR until explicit batch finalization;
-- for ordinary chats without a repo attached, use the standalone lane with
-  each workspace's own saved access and a fresh task branch off `main`;
+- split his work by file. Use `captain/WORKER_BRIEF_TEMPLATE.md`,
+  `captain/GITHUB_BRIEFS.md` and `captain/FASTLANE.md` to publish each brief and
+  task JSON to the target GitHub repo's dedicated docs branch. Verify the
+  push and hand him only a pinned brief link and the repo to attach;
+- workers must attach that repo in Arena Agent Mode. No/wrong attachment
+  means `BLOCKED`, not a standalone job. Reuse each live worker's real
+  `arena/*` branch and exact verified tip for the next safe checkpoint;
+- after each verified push, workers mention `@Keshab1997` in the approved
+  tracker with the exact checkpoint, or report `MENTION PENDING` if there is
+  no comment access. No linked PR merge/close until explicit finalization;
 - fetch, review only the reported base-to-tip diff, check and integrate from
   your own checkout. Workers never push `main`. No file handoff for Keshab;
 - you **never** push a tag/release, never touch secrets/settings, and you ask him

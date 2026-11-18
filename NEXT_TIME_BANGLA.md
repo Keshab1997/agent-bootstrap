@@ -52,18 +52,19 @@ python3 /home/user/agent-bootstrap/device_pair.py poll 60
 `TIMEOUT for this turn` মানে ৬০ সেকেন্ডের অপেক্ষা শেষ, code শেষ নয়। একই command
 আবার চলবে। সত্যিই `EXPIRED` হলে `gh_app.py connect` নতুন code নিতে পারে।
 
-## Workers: একই চ্যাট ব্যবহার, সরাসরি branch push
+## Workers: GitHub-এর brief, Arena-তে repo attach
 
-Captain [Fast Lane briefs](captain/WORKER_BRIEF_TEMPLATE.md) দেবে। একেক কাজ
-শেষ হলে worker **branch checkpoint** push করবে। Captain-কে পুরো `PUSHED`
-report দিন; ফাইল download/upload নয়। পরের কাজ একই chat-এ দেওয়া যাবে যদি
-চালু `arena/*` branch-এর সর্বশেষ SHA Captain যাচাই করে এবং সেই base-এ কাজটি করা যায়।
+Captain কাজের repo-তে [brief ও task JSON push](captain/GITHUB_BRIEFS.md) করবে।
+Worker chat শুরু করার সময় Arena Agent Mode-এ **কাজের repo attach** করুন।
+তারপর Captain-এর এক লাইনের pinned link দিন। Brief বা app file হাতে
+copy/download/upload করবেন না। ভুল বা missing attachment হলে `BLOCKED`।
 
-**Repo-linked chat-এ PR merge বা close করলে আবার push করা যায় না।** PR-এর
-সিদ্ধান্ত batch-এর শেষে। `main` থেকে ঘন ঘন fresh task চাইলে repo attach না করে
-ordinary Agent Mode chat-এ standalone lane নিন। সেখানে task-পিছু নতুন
-`agent/<letter>/<task>` branch, chat-পিছু নিজস্ব saved login। Fresh workspace-এ
-approval লাগতে পারে। [ধাপে ধাপে ব্যবহার](captain/HOW_TO_START_BN.md)।
+Worker একই `arena/*` branch-এ checkpoint push করবে। Push যাচাই হলে
+অনুমোদিত tracking issue-তে `@Keshab1997` mention করবে। Comment access না
+থাকলে Arena-তে checkpoint link আর `MENTION PENDING` দেবে। Captain review
+করে শেষ যাচাই করা SHA থেকে পরের brief publish করবে। **PR merge বা close
+করলে ওই chat আর push করতে পারে না** — সিদ্ধান্ত batch-এর শেষে। নতুন base
+দরকার হলে সঠিক repo attach করে নতুন chat নিন। [ধাপে ধাপে ব্যবহার](captain/HOW_TO_START_BN.md)।
 
 ## Authenticator-এর GitHub code দিলে কি হবে?
 
@@ -107,7 +108,7 @@ python3 selftest.py                    # fake token দিয়ে offline regr
 | Refresh token | সাধারণত ১৮১ দিনের মেয়াদ; ব্যবহারে rotate হয়, নতুনটি সেভ হয় |
 | একই workspace-এর পরের turn | সেভ করা session/pending code reuse হয় |
 | একদম নতুন Captain workspace | পুরোনো credential নেই — প্রথম approval এখনও দরকার |
-| একই worker workspace-এর পরের batch | saved login/refresh reuse; branch push দিয়ে handoff |
+| একই repo-linked worker chat-এর পরের batch | Arena access ও যাচাই করা branch tip reuse; নতুন pinned brief |
 | Revoked/expired refresh বা হারানো credential | আবার approval লাগতে পারে |
 
 **শুধু public repo দিয়ে সব নতুন workspace-কে গোপনে write access দেওয়া নিরাপদ নয়।**

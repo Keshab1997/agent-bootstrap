@@ -1,6 +1,9 @@
 # Example task — Agent C
 
-Fill into the [compact brief](../WORKER_BRIEF_TEMPLATE.md). Ordinary chat with **no repo attached**. Omit `arena` for a new standalone branch.
+Use the [GitHub brief template](../WORKER_BRIEF_TEMPLATE.md) in `Keshab1997/flutter-builder`.
+First task with that repo attached in Arena; `null` is valid only when the
+attached branch is at current `main`. Put the prose in `BRIEF.md` (with
+the approved tracking issue if available) and the JSON in `task.json`.
 
 **Goal and acceptance:** Explain the single-test-file rule in one sentence. Update the embedded installer payload so the parity tests pass.
 
@@ -19,6 +22,10 @@ Fill into the [compact brief](../WORKER_BRIEF_TEMPLATE.md). Ordinary chat with *
   "check": {
     "kind": "pytest",
     "target": "tests"
+  },
+  "arena": {
+    "branch": "auto",
+    "base_sha": null
   }
 }
 ```

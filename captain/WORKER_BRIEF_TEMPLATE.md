@@ -1,15 +1,29 @@
-# Captain worker brief — Fast Lane
+# Captain worker brief — GitHub Fast Lane
 
-Copy the block below. Fill all fields. Give each worker one task at a time and
-one exclusive set of paths. Use a new `task` ID for the next task; leave the
-original JSON unchanged on resume. See [profiles and examples](FASTLANE.md).
-For an in-flight pre-Fast-Lane task, keep its [original workflow](LEGACY_WORKER_BRIEF.md).
+For each new task publish both files below at
+`docs/agent-briefs/<batch>/<task>/` on the target repo's `captain/briefs/<batch>`
+branch. Use the same task ID in the path and JSON. Share only the pinned
+`BRIEF.md` link and the Arena attach instruction after verifying the push. See
+[GitHub briefs](GITHUB_BRIEFS.md) for the exact handoff and reporting steps.
 
-✂ ────────────────── COPY FROM HERE ──────────────────
+## `BRIEF.md`
 
+```markdown
+# {{TASK}} — Worker {{LETTER}}
+
+**Repository:** `Keshab1997/{{REPO}}` — attach this repo in Arena Agent Mode.
 **Goal and acceptance:** {{one testable result}}
-
 **Interface / exclusions:** {{exact contracts to keep; what you must not change}}
+**Scope and gate:** See [task.json](task.json) at this same commit. Do not edit it.
+**Report:** {{approved same-repo tracking issue URL + @Keshab1997, or worker chat (GitHub mention pending)}}
+
+Use the current agent-bootstrap `captain/FASTLANE.md`. Keep the real `arena/*`
+branch. After a verified `PUSHED`, include the brief link, checkpoint block
+and commit link when reporting. If blocked, report the reason; do not change
+branch, use a standalone clone, re-pair, run CI, or open/merge/close a PR.
+```
+
+## `task.json`
 
 ```json
 {
@@ -23,20 +37,11 @@ For an in-flight pre-Fast-Lane task, keep its [original workflow](LEGACY_WORKER_
 }
 ```
 
-**Worker:** Read `captain/FASTLANE.md` from your verified bootstrap clone. Save
-the JSON under `~/agent-workbench/inbox/`, outside the app repo. Use the lane's
-`start` → read repo `AGENTS.md` → edit only `allowed` → `check` → inspect `diff`
-→ `publish` sequence. Report the tool's `AGENT … PUSHED` block and one line about
-what changed, or `AGENT … BLOCKED` with the exact problem. No `main`, PR, CI
-manual run, force-push, branch deletion, or credential sharing. Wait for a new
-Captain brief before starting another task. For a linked chat stay on its
-actual `arena/*` branch; never try to revive a terminal chat.
-
-✂ ────────────────── COPY ENDS HERE ───────────────────
-
-**Captain:** For a first linked task, use `"auto"` (or the real branch) and
-`null` only if the attached branch's HEAD equals current remote `main`. For
-later linked tasks use the **exact branch** and the full **Captain-verified
-pushed SHA** of the last task as `base_sha`.
-For an ordinary chat with **no repo attached**, omit the entire `arena` field
-and its preceding comma. Standalone uses a new branch from fetched `main`.
+**Captain:** New briefs always include `arena`. For a first task, use the
+actual branch when known. Use `auto` or `null` only on a clean first task whose
+attached `HEAD` equals current remote `main`; prefer a full pinned code base
+SHA when known. For each later task use the exact `arena/*` branch and full
+Captain-verified pushed SHA of the last task. Don't confuse the docs commit
+SHA in the permalink with the code base SHA. Don't assign the brief files as
+worker scope. See [examples](examples/). Preserve the original JSON and lane
+for work already in flight; do not migrate it mid-task.
