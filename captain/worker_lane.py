@@ -306,6 +306,142 @@ class Lane:
     def clean(self):
         return not self.git('status', '--porcelain=v1', '-z', '--untracked-files=all').stdout
 
+    def _tree_entry(self, treeish, path):
+        raw = items(self.git('ls-tree', '-z', treeish, '--', path))
+        if not raw:
+            return None
+        meta, _ = raw[0].split('\t', 1)
+        mode, kind, sha = meta.split(' ')
+        return (mode, sha) if kind == 'blob' and mode in ('100644', '100755') else ('special', mode, sha)
+
+    def _index_entry(self, path, index=None):
+        raw = items(self.git('ls-files', '--stage', '-z', '--', path, index=index))
+        if not raw:
+            return None
+        if len(raw) != 1:
+            return ('conflict',)
+        meta, _ = raw[0].split('\t', 1)
+        mode, sha, stage = meta.split(' ')
+        return (mode, sha) if stage == '0' and mode in ('100644', '100755') else ('special', mode, sha)
+
+    def _remove_verified_file(self, rel_path):
+        target = self.dir / rel_path
+        if target.is_symlink() or not target.is_file():
+            raise LaneError(f'Refusing to remove unexpected path while syncing checkpoint: {rel_path!r}')
+        resolved = target.resolve()
+        if self.dir not in resolved.parents:
+            raise LaneError(f'Path escapes checkout root: {rel_path!r}')
+        target.unlink()
+        parent = target.parent
+        while parent != self.dir:
+            try:
+                parent.rmdir()
+            except OSError:
+                break
+            parent = parent.parent
+
+    def reconcile_restored_checkpoint(self, target, *, preserve_allowed=False):
+        """Fast-forward a restored Arena branch to its verified published checkpoint.
+
+        Arena can resume a hibernated linked session with local HEAD back at an
+        earlier ancestor commit while the workspace snapshot already holds the
+        published checkpoint's files (or a clean tree at that ancestor). Advance
+        the existing arena/* ref only when GitHub's live branch tip equals
+        `target`, local HEAD is an ancestor of `target`, and no staged, tracked,
+        or untracked file contains unsaved changes outside the verified state.
+        """
+        if not self.linked or not is_sha(target):
+            return None
+        branch = self.text('branch', '--show-current')
+        self.check_branch(branch)
+        ref = 'refs/heads/' + branch
+        if self.git('symbolic-ref', '-q', 'HEAD', check=False).stdout.decode(errors='replace').strip() != ref:
+            return None
+        head = self.text('rev-parse', '--verify', 'HEAD')
+        if head == target:
+            return None
+        if self.git('ls-files', '-u').stdout:
+            raise LaneError('The index has conflicts. Do not commit or push.')
+        if self.remote_sha(branch) != target:
+            return None
+        track = 'refs/remotes/origin/' + branch
+        self.git('fetch', '--no-tags', '--no-recurse-submodules', 'origin', f'+{ref}:{track}', network=True)
+        if self.text('rev-parse', '--verify', track + '^{commit}') != target:
+            raise LaneError('Remote branch moved during fetch. Reconcile with the Captain.')
+        if self.git('merge-base', '--is-ancestor', head, target, check=False).returncode:
+            if self.text('rev-parse', '--is-shallow-repository') == 'true':
+                self.git('fetch', '--no-tags', '--no-recurse-submodules', '--deepen=64',
+                         'origin', f'+{ref}:{track}', network=True, check=False)
+                if self.git('merge-base', '--is-ancestor', head, target, check=False).returncode:
+                    self.git('fetch', '--no-tags', '--no-recurse-submodules', '--unshallow',
+                             'origin', f'+{ref}:{track}', network=True, check=False)
+            if self.git('merge-base', '--is-ancestor', head, target, check=False).returncode:
+                return None
+        if self.clean():
+            # Clean ancestor clone with no local edits or untracked files.
+            self.git('merge', '--ff-only', target)
+            return head
+        # Protect any staged change that is not already identical to target.
+        for path in items(self.git('diff', '--cached', '--no-renames', '--name-only', '-z', head, '--')):
+            idx = self._index_entry(path)
+            tgt = self._tree_entry(target, path)
+            if ((idx is not None and len(idx) != 2) or (tgt is not None and len(tgt) != 2)
+                    or (idx[1] if idx else None) != (tgt[1] if tgt else None)):
+                return None
+        allowed = set(self.task['allowed']) if preserve_allowed else set()
+        stale_deleted = []
+        with tempfile.TemporaryDirectory(prefix='.reconcile-', dir=self.states) as temp:
+            index = Path(temp) / 'index'
+            self.git('read-tree', target, index=index)
+            self.git('add', '-A', '--', '.', index=index)
+            diffs = items(self.git('diff', '--cached', '--no-renames', '--name-only', '-z', target, '--', index=index))
+            for path in diffs:
+                wt = self._index_entry(path, index=index)
+                if wt is not None and len(wt) != 2:
+                    return None
+                if path in allowed:
+                    continue
+                # An overlay restore onto a fresh ancestor clone can leave a
+                # file deleted in head..target on disk at its exact head blob.
+                tgt = self._tree_entry(target, path)
+                old = self._tree_entry(head, path)
+                disk = self.dir / path
+                if (tgt is not None or old is None or len(old) != 2 or wt is None
+                        or wt[1] != old[1] or disk.is_symlink() or not disk.is_file()):
+                    return None
+                stale_deleted.append(path)
+        self.git('update-ref', '-m', f'fastlane: sync restored checkpoint {target[:12]}', ref, target, head)
+        self.git('read-tree', target)
+        for path in stale_deleted:
+            self._remove_verified_file(path)
+        # Re-apply executable bits recorded in target without touching allowed edits.
+        for entry in items(self.git('ls-files', '--stage', '-z')):
+            meta, path = entry.split('\t', 1)
+            if meta.startswith('100755 ') and path not in allowed:
+                disk = self.dir / path
+                if disk.is_file() and not disk.is_symlink():
+                    disk.chmod(disk.stat().st_mode | 0o111)
+        self.git('update-index', '-q', '--refresh', check=False)
+        if self.active_head() != target or (not preserve_allowed and not self.clean()):
+            raise LaneError('Restored checkout did not settle cleanly at the pinned checkpoint. Report to the Captain.')
+        return head
+
+    def sync_resumed_state(self, state):
+        """Reconcile HEAD if Arena restored an older ancestor commit mid-task."""
+        if not self.linked:
+            return state
+        commit = state.get('commit')
+        if commit and is_sha(commit):
+            restored = self.reconcile_restored_checkpoint(commit)
+        elif not state.get('pushed') and state.get('remote_base') == state['base_sha']:
+            restored = self.reconcile_restored_checkpoint(state['base_sha'], preserve_allowed=True)
+        else:
+            restored = None
+        if restored:
+            state['restored_from'] = restored
+            save_json(self.state_file, state)
+        return state
+
     def remote_sha(self, branch):
         ref = 'refs/heads/' + branch
         p = self.git('ls-remote', '--exit-code', 'origin', ref, network=True, check=False)
@@ -320,7 +456,7 @@ class Lane:
 
     def start(self):
         if self.state_file.is_file():
-            state = self.load()
+            state = self.sync_resumed_state(self.load())
             if not state.get('pushed'):
                 self.active_head()
             return state
@@ -333,27 +469,38 @@ class Lane:
                 raise LaneError(f'{path.stem} is unfinished here. Resume/publish it first; do not reset it.')
             completed.append(state)
         self.ensure_checkout(start=True)
-        if not self.clean():
-            raise LaneError('Local changes exist. Preserve them; no new task was started.')
+        restored = None
         if self.linked:
             self.branch = self.text('branch', '--show-current')
             self.check_branch(self.branch)
-            base = self.active_head()
             pinned = self.arena['base_sha']
-            if pinned and base != pinned:
-                raise LaneError('Local HEAD differs from the Captain’s pinned base. Do not rewrite the branch.')
             if completed:
                 prior_bases = {s['base_sha'] for s in completed}
                 latest = [s for s in completed if s['commit'] not in prior_bases]
-                if (len(latest) != 1 or latest[0]['branch'] != self.branch or latest[0]['commit'] != pinned
-                        or self.arena['branch'] != self.branch):
+                if (len(latest) != 1 or latest[0]['branch'] != self.branch
+                        or not pinned or self.arena['branch'] != self.branch):
                     raise LaneError('Next linked task needs the exact branch and the Captain’s verified last checkpoint.')
+            if pinned and self.arena['branch'] == self.branch:
+                restored = self.reconcile_restored_checkpoint(pinned)
+            if completed and latest[0]['commit'] != pinned:
+                prev = latest[0]['commit']
+                # Permit advancing past an intermediate checkpoint that ran in a
+                # lost workbench, never rewinding to an older commit.
+                if self.git('merge-base', '--is-ancestor', prev, pinned, check=False).returncode:
+                    raise LaneError('Next linked task needs the exact branch and the Captain’s verified last checkpoint.')
+            if not self.clean():
+                raise LaneError('Local changes exist. Preserve them; no new task was started.')
+            base = self.active_head()
+            if pinned and base != pinned:
+                raise LaneError('Local HEAD differs from the Captain’s pinned base. Do not rewrite the branch.')
             last = self.remote_sha(self.branch)
             if last and last != base:
                 raise LaneError('Local and remote Arena tips differ. Reconcile with the Captain before editing.')
             if (completed and last is None) or ((not pinned or last is None) and self.remote_sha('main') != base):
                 raise LaneError('A new Arena checkpoint must start at main or a pinned, published baseline.')
         else:
+            if not self.clean():
+                raise LaneError('Local changes exist. Preserve them; no new task was started.')
             if self.text('branch', '--list', self.branch) or self.remote_sha(self.branch):
                 raise LaneError('Task branch already exists without matching saved state. Use a fresh task ID.')
             self.git('fetch', '--no-tags', '--no-recurse-submodules', 'origin',
@@ -362,6 +509,8 @@ class Lane:
             self.git('switch', '-c', self.branch, base)
             last = None
         state = {'task': self.task, 'base_sha': base, 'branch': self.branch, 'remote_base': last, 'pushed': False}
+        if restored:
+            state['restored_from'] = restored
         save_json(self.state_file, state)
         return state
 
@@ -442,7 +591,7 @@ class Lane:
         return ('preflight passed; ' if preflight else '') + f'Flutter {version}: {test} passed', snapshot
 
     def check(self):
-        state = self.load(allow_check_revision=True)
+        state = self.sync_resumed_state(self.load(allow_check_revision=True))
         if state.get('pushed') or state.get('commit'):
             raise LaneError('A commit is already recorded. Retry publish, not another edit.')
         if self.active_head() != state['base_sha'] or self.git('diff', '--cached', '--quiet', check=False).returncode:
@@ -475,7 +624,7 @@ class Lane:
         return files, patch
 
     def diff(self):
-        state = self.load()
+        state = self.sync_resumed_state(self.load())
         head = self.active_head()
         if head == state['base_sha']:
             self.snapshot(show_diff=True)
@@ -492,7 +641,7 @@ class Lane:
                 and self.text('show', '-s', '--format=%s', head) == self.task['commit'])
 
     def publish(self):
-        state = self.load()
+        state = self.sync_resumed_state(self.load())
         remote = self.remote_sha(self.branch)
         if state.get('pushed'):
             if remote != state['commit']:
@@ -561,7 +710,8 @@ class Lane:
                 'check: ' + state['check_result'],
             ])
         phase = 'commit saved; push pending' if state.get('commit') else ('checked' if state.get('checked_tree') else 'ready')
-        return f'{phase}\ntask: {self.slug}\nworkdir: {self.dir}\nbranch: {self.branch}\nbase_sha: {state["base_sha"]}'
+        out = f'{phase}\ntask: {self.slug}\nworkdir: {self.dir}\nbranch: {self.branch}\nbase_sha: {state["base_sha"]}'
+        return out + (f'\nrestored_from: {state["restored_from"]}' if state.get('restored_from') else '')
 
 
 def main():

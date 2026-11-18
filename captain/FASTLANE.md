@@ -17,10 +17,12 @@ A task checkpoint is a tested, remotely verified commit, **not** a PR.
 ## 1. Resolve the GitHub brief before editing
 
 Use a separate verified clone of `Keshab1997/agent-bootstrap` for these tools
-and docs (normally `/home/user/agent-bootstrap`). Verify origin and
-fast-forward clean `main` before a new batch. If dirty, or if bootstrap is
-itself the attached target checkout, read the current playbook from a separate
-read-only clone. Never switch the attached target checkout for this update.
+and docs (normally `/home/user/agent-bootstrap`). Verify origin (if an Arena
+snapshot dropped `.git/config`, restore `https://github.com/Keshab1997/agent-bootstrap.git`
+only when `origin` is absent) and fast-forward clean `main` before every new
+batch. If dirty, or if bootstrap is itself the attached target checkout, read
+the current playbook from a separate fresh read-only clone (e.g. under `/tmp`).
+Never switch the attached target checkout for this update.
 
 The Captain's launch line gives the target repo, worker letter and pinned
 `BRIEF.md` link. Follow [the GitHub brief fetch steps](GITHUB_BRIEFS.md#2-worker-attach-the-target-repo-then-read-the-pinned-docs).
@@ -61,11 +63,15 @@ with the exact checkpoint block and link. If comment access is unavailable,
 return the block in Arena with `MENTION PENDING`, not a false mention. Report
 `BLOCKED` with the reason when code has not pushed.
 
-Interrupted? Keep the same permalink, task JSON, checkout and workbench. Use
-`status` or repeat `start` for the same task. Fix check failures and re-check.
-After an interrupted commit or push, repeat `publish` to finish or verify the
-same checkpoint. For wrong origin, moved refs, dirty unrelated files or lost
-access, do not overwrite edits or bypass Arena: report `BLOCKED`. Existing
+Interrupted or resumed in a restored sandbox? Keep the same permalink, task
+JSON, checkout and workbench, and update the separate `agent-bootstrap` clone
+first. If Arena wakes a linked session with local `HEAD` back at an earlier
+ancestor commit while GitHub's `arena/*` branch is at the verified checkpoint
+and the restored files carry no unsaved divergence, `worker_lane.py` fast-forwards
+the existing branch ref cleanly (logging `restored_from:`) and preserves any
+in-scope edits. Never run manual `git reset` on the attached checkout yourself:
+if any file differs from the verified checkpoint, or for wrong origin, moved
+refs or lost access, leave the worktree untouched and report `BLOCKED`. Existing
 manual tasks use their [original handoff](LEGACY_WORKER_BRIEF.md).
 
 ### Check profiles

@@ -264,6 +264,196 @@ if 'FIXTURE_FAILS' in environ:
         self.assertEqual((bound / 'lesson.txt').read_text(), 'checkpoint one\n')
         self.assertEqual(self.heads()['refs/heads/' + self.branch], self.git('rev-parse', 'HEAD'))
 
+    def _simulate_arena_head_rewind(self, bound, ancestor):
+        branch = self.git('branch', '--show-current', cwd=bound)
+        self.git('update-ref', 'refs/heads/' + branch, ancestor, cwd=bound)
+        self.git('read-tree', ancestor, cwd=bound)
+
+    def test_restored_snapshot_over_ancestor_head_reconciles_and_publishes(self):
+        # Seed a deletable file + gitignore so overlay deletions & ignored files are exercised too.
+        self.write('.gitignore', 'ignored.tmp\n')
+        self.write('retired.txt', 'old file from base\n')
+        self.git('add', '--', '.gitignore', 'retired.txt')
+        self.git('commit', '-qm', 'add retired and gitignore')
+        self.git('push', '-q', 'origin', 'main')
+        base = self.git('rev-parse', 'HEAD')
+        bound = self.attach()
+
+        first = self.linked('b1', bound, ('lesson.txt', 'added_b1.txt', 'retired.txt'), base=base)
+        first.start()
+        self.write('lesson.txt', 'after b1\n', bound)
+        self.write('added_b1.txt', 'new in b1\n', bound)
+        (bound / 'retired.txt').unlink()
+        first.check()
+        c1 = first.publish()['commit']
+
+        second = self.linked('b2', bound, ('lesson.txt', 'added_b2.txt'), branch=self.branch, base=c1)
+        second.start()
+        self.write('lesson.txt', 'after b2\n', bound)
+        self.write('added_b2.txt', 'new in b2\n', bound)
+        second.check()
+        c2 = second.publish()['commit']
+
+        # Arena wakes the session with HEAD+index at `base`, workspace files from `c2`,
+        # `retired.txt` still present from the fresh `base` clone, plus an ignored cache file.
+        self._simulate_arena_head_rewind(bound, base)
+        self.write('retired.txt', 'old file from base\n', bound)
+        self.write('ignored.tmp', 'keep me\n', bound)
+        self.assertNotEqual(self.git('status', '--porcelain', cwd=bound), '')
+
+        third = self.linked('b3', bound, ('lesson.txt',), branch=self.branch, base=c2)
+        started = third.start()
+        self.assertEqual(started['base_sha'], c2)
+        self.assertEqual(started['restored_from'], base)
+        self.assertIn('restored_from: ' + base, third.describe(started))
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=bound), c2)
+        self.assertEqual(self.git('status', '--porcelain', cwd=bound), '')
+        self.assertFalse((bound / 'retired.txt').exists())
+        self.assertEqual((bound / 'ignored.tmp').read_text(), 'keep me\n')
+
+        self.write('lesson.txt', 'after b3 polish\n', bound)
+        third.check()
+        done = third.publish()
+        patch = self.reviewed_diff(third, done)
+        self.assertIn('after b3 polish', patch)
+        self.assertNotIn('added_b1.txt', patch)
+        self.assertNotIn('added_b2.txt', patch)
+
+    def test_restored_clean_and_shallow_ancestor_checkouts_fast_forward(self):
+        bound = self.attach()
+        first = self.linked('b1', bound, ('lesson.txt', 'new.txt'))
+        first.start()
+        self.write('lesson.txt', 'v2\n', bound)
+        self.write('new.txt', 'created\n', bound)
+        first.check()
+        c1 = first.publish()['commit']
+
+        # Case 1: clean ancestor checkout at self.base.
+        self.git('reset', '--hard', self.base, cwd=bound)
+        second = self.linked('b2', bound, ('lesson.txt',), branch=self.branch, base=c1)
+        started = second.start()
+        self.assertEqual(started['base_sha'], c1)
+        self.assertEqual(started['restored_from'], self.base)
+        self.assertEqual((bound / 'new.txt').read_text(), 'created\n')
+        self.write('lesson.txt', 'v3\n', bound)
+        second.check()
+        c2 = second.publish()['commit']
+
+        # Case 2: fresh shallow (--depth 1) clone at self.base overlaid with c2 files.
+        shallow = self.root / 'shallow'
+        subprocess.run(['git', 'clone', '-q', '--depth', '1', '--branch', 'main',
+                        'file://' + str(self.remote), str(shallow)], check=True)
+        self.git('switch', '-qc', self.branch, cwd=shallow)
+        self.write('lesson.txt', 'v3\n', shallow)
+        self.write('new.txt', 'created\n', shallow)
+        other_root = self.root / 'wb2'
+        third = work.Lane(task('b3', ('lesson.txt',), arena={'branch': self.branch, 'base_sha': c2}),
+                          other_root, checkout=shallow, _test_remote='file://' + str(self.remote))
+        resumed = third.start()
+        self.assertEqual(resumed['base_sha'], c2)
+        self.assertEqual(resumed['restored_from'], self.base)
+        self.assertEqual(self.git('status', '--porcelain', cwd=shallow), '')
+
+    def test_restored_snapshot_mid_task_and_post_push_preserves_edits(self):
+        bound = self.attach()
+        first = self.linked('b1', bound, ('extra.txt',))
+        self.checked(first, 'extra.txt', 'from b1\n')
+        c1 = first.publish()['commit']
+
+        second = self.linked('b2', bound, ('lesson.txt',), branch=self.branch, base=c1)
+        second.start()
+        self.write('lesson.txt', 'in-flight ui polish\n', bound)
+        # Hibernate mid-edit: HEAD rewinds to self.base while files stay intact.
+        self._simulate_arena_head_rewind(bound, self.base)
+        checked = second.check()
+        self.assertEqual(checked['restored_from'], self.base)
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=bound), c1)
+        self.assertEqual((bound / 'lesson.txt').read_text(), 'in-flight ui polish\n')
+
+        # Interrupt right after push, then hibernate back to self.base before retry.
+        execute = second.git
+
+        def push_then_drop(*args, **opts):
+            result = execute(*args, **opts)
+            if args[0] == 'push':
+                raise work.LaneError('turn ended after push')
+            return result
+
+        with mock.patch.object(second, 'git', side_effect=push_then_drop):
+            with self.assertRaisesRegex(work.LaneError, 'turn ended'):
+                second.publish()
+        pushed_sha = self.heads()['refs/heads/' + self.branch]
+        self._simulate_arena_head_rewind(bound, self.base)
+        finished = second.publish()
+        self.assertTrue(finished['pushed'])
+        self.assertEqual(finished['commit'], pushed_sha)
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=bound), pushed_sha)
+
+    def test_restored_ancestor_never_overwrites_unsaved_staged_or_diverged_work(self):
+        self.write('retired.txt', 'original\n')
+        self.git('add', '--', 'retired.txt')
+        self.git('commit', '-qm', 'add retired')
+        self.git('push', '-q', 'origin', 'main')
+        base = self.git('rev-parse', 'HEAD')
+        bound = self.attach()
+
+        first = self.linked('b1', bound, ('lesson.txt', 'retired.txt'), base=base)
+        first.start()
+        self.write('lesson.txt', 'pinned text\n', bound)
+        (bound / 'retired.txt').unlink()
+        first.check()
+        c1 = first.publish()['commit']
+
+        # 1. Modified tracked file differs from c1 -> blocked, untouched.
+        self._simulate_arena_head_rewind(bound, base)
+        self.write('lesson.txt', 'unsaved user draft\n', bound)
+        with self.assertRaisesRegex(work.LaneError, 'Local changes'):
+            self.linked('b2', bound, branch=self.branch, base=c1).start()
+        self.assertEqual((bound / 'lesson.txt').read_text(), 'unsaved user draft\n')
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=bound), base)
+
+        # 2. Extra untracked file not in c1 -> blocked, untouched.
+        self.write('lesson.txt', 'pinned text\n', bound)
+        self.write('notes.txt', 'private scratch\n', bound)
+        with self.assertRaisesRegex(work.LaneError, 'Local changes'):
+            self.linked('b2', bound, branch=self.branch, base=c1).start()
+        self.assertEqual((bound / 'notes.txt').read_text(), 'private scratch\n')
+        (bound / 'notes.txt').unlink()
+
+        # 3. Deleted-in-c1 file edited locally (differs from base) -> blocked, untouched.
+        self.write('retired.txt', 'user edited retired\n', bound)
+        with self.assertRaisesRegex(work.LaneError, 'Local changes'):
+            self.linked('b2', bound, branch=self.branch, base=c1).start()
+        self.assertEqual((bound / 'retired.txt').read_text(), 'user edited retired\n')
+        (bound / 'retired.txt').unlink()
+
+        # 4. Staged index edit differs from c1 while worktree matches c1 -> blocked, index kept.
+        self.write('lesson.txt', 'staged secret draft\n', bound)
+        self.git('add', '--', 'lesson.txt', cwd=bound)
+        self.write('lesson.txt', 'pinned text\n', bound)
+        with self.assertRaisesRegex(work.LaneError, 'Local changes'):
+            self.linked('b2', bound, branch=self.branch, base=c1).start()
+        self.assertIn('staged secret draft', self.git('diff', '--cached', cwd=bound))
+        self.git('read-tree', base, cwd=bound)
+
+        # 5. Diverged local commit (not ancestor of c1) -> blocked, commit kept.
+        self.git('reset', '--hard', base, cwd=bound)
+        self.write('local.txt', 'unpushed commit\n', bound)
+        self.git('add', '--', 'local.txt', cwd=bound)
+        self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.com',
+                 'commit', '-qm', 'diverged local work', cwd=bound)
+        diverged = self.git('rev-parse', 'HEAD', cwd=bound)
+        with self.assertRaisesRegex(work.LaneError, 'pinned base'):
+            self.linked('b2', bound, branch=self.branch, base=c1).start()
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=bound), diverged)
+
+        # 6. Remote tip moved away from c1 -> never reconciles to stale pin.
+        self.git('reset', '--hard', base, cwd=bound)
+        self.git('push', '-qf', 'origin', f'{diverged}:refs/heads/{self.branch}', cwd=bound)
+        with self.assertRaisesRegex(work.LaneError, 'pinned base'):
+            self.linked('b2', bound, branch=self.branch, base=c1).start()
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=bound), base)
+
     def test_captain_rejects_wrong_tip_base_branch_scope(self):
         lane = self.lane()
         self.checked(lane)
