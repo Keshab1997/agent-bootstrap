@@ -101,6 +101,11 @@ launch line with the repo and a commit-pinned link.
   chat. Reuse the verified tip for the next safe task; finalize only when
   asked. Preserve original terms for work already in flight.
 
+For apps using `flutter-builder`, attach the **app repo** and reuse its
+installed preflight and current CI pin. Attach `flutter-builder` itself only
+for work on its shared workflows, installer, or agent pack; use its pytest
+suite. See the [Captain's builder rules](captain/CAPTAIN_PROMPT.md#how-to-use-flutter-builder).
+
 **No brief copy/paste or app-file downloads/uploads between chats.** See the
 [Bengali walkthrough](captain/HOW_TO_START_BN.md).
 

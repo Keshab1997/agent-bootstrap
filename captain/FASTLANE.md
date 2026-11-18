@@ -39,9 +39,12 @@ the variables again if your tool starts a new shell):
 python3 -B "$lane" --checkout "$checkout" --root "$workbench" start "$task"
 ```
 
-Use the printed `workdir`; read its `AGENTS.md` if present. Edit only the
-exact `allowed` paths. Do not stage, commit by hand, touch the brief files,
-edit `main`, or switch branches. Run separately in order, only if the
+Use the printed `workdir`; read its `AGENTS.md` if present. If the target is
+`flutter-builder` or uses an older installed agent pack, any direct-to-`main`
+loop in that file is for independent work only. For a Captain task, use the
+JSON gate and this lane, not `tool/agent_loop.py`. Edit only the exact
+`allowed` paths. Do not stage, commit by hand, touch the brief files, edit
+`main`, or switch branches. Run separately in order, only if the
 previous step succeeded, and **read** the diff before publishing:
 
 ```bash

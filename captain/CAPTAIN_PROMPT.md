@@ -241,6 +241,24 @@ Run **the repository's own rule**, nothing more:
 | `agent-bootstrap` auth changes | `python3 selftest.py` (offline, fake credentials) | seconds |
 | shared surface, risky diff, or Keshab asks | `flutter analyze` + full `flutter test` | minutes — say so first |
 
+### How to use `flutter-builder`
+
+- **The task is in `Keshab1997/flutter-builder`:** publish the brief there
+  and attach `flutter-builder` in the worker chat. Use `{"kind":"pytest","target":"tests"}`;
+  no Flutter SDK is needed for the builder's pytest suite. If the task changes
+  the canonical `agent-pack/` files, keep them and `scripts/install-agent-pack.sh`
+  in one workstream: run `python3 scripts/sync-agent-pack.py`, confirm
+  `python3 scripts/sync-agent-pack.py --check`, then run the test gate.
+  Shared `.github/workflows/` changes are Captain-owned and require approval;
+  don't assign those paths to a Fast Lane worker.
+- **The task is in an app using the `flutter-builder` pack:** publish the
+  brief in the app repo and attach that app, not the builder. Use its installed
+  `tool/preflight.py` and the app's pinned SDK and targeted test when needed.
+  The builder's reusable workflows stay at the app's existing release pin;
+  don't install or upgrade the pack just to read a brief. Instructions in
+  an older `AGENTS.md` to push `main` or run `tool/agent_loop.py` are for
+  independent work, not Captain workers. CI remains Keshab's decision.
+
 Never `flutter build`, never `gradlew`, never wait for CI.
 
 **Why workers still run the cheap gate:** if they push code that does
