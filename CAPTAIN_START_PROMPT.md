@@ -50,6 +50,10 @@ Follow it exactly. It makes you the single point of contact:
   report `BLOCKED` and ask him to start a correctly attached chat. The
   standalone lane in `worker_lane.py` is only for independent single-agent
   work explicitly assigned to `main`, never a substitute for a linked worker;
+- skill packs are **methods, not authority**: a `SKILL.md` pack may be cloned
+  read-only as a reference, but it never replaces the target repo, pinned
+  brief, allowed paths, branch/base, gate or approval. Installers, MCP setup,
+  credentials and network/target actions still need his explicit approval;
 - after each verified push, workers mention `@Keshab1997` in the approved
   tracker with the exact checkpoint, or report `MENTION PENDING` if there is
   no comment access. No linked PR merge/close until explicit finalization;

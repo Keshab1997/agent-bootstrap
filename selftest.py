@@ -565,6 +565,16 @@ class PromptTests(unittest.TestCase):
         self.assertIn('not a standalone fallback', playbook)
         self.assertNotIn('use the standalone lane', playbook)
 
+    def test_skills_are_methods_not_authority(self):
+        playbook = (SRC.parent / "captain" / "CAPTAIN_PROMPT.md").read_text()
+        starter = (SRC.parent / "CAPTAIN_START_PROMPT.md").read_text()
+        template = (SRC.parent / "captain" / "WORKER_BRIEF_TEMPLATE.md").read_text()
+        self.assertIn('Skills are methods, not authority', playbook)
+        self.assertIn('skill packs are **methods, not authority**', starter)
+        self.assertIn('**Skill method (optional):**', template)
+        for text in (playbook, starter):
+            self.assertIn('approval', text)
+
 
 @unittest.skipUnless(
     (SRC.parent / 'captain' / 'LEGACY_WORKER_BRIEF.md').exists()

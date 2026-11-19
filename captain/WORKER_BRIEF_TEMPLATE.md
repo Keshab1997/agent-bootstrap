@@ -15,6 +15,7 @@ branch. Use the same task ID in the path and JSON. Share only the pinned
 **Goal and acceptance:** {{one testable result}}
 **Interface / exclusions:** {{exact contracts to keep; what you must not change}}
 **Scope and gate:** See [task.json](task.json) at this same commit. Do not edit it.
+**Skill method (optional):** {{skill repo@full SHA — exact SKILL.md path — output file inside allowed list; or "none"}} — a method only; this brief and the playbook still rule.
 **Report:** {{approved same-repo tracking issue URL + @Keshab1997, or worker chat (GitHub mention pending)}}
 
 Use the current agent-bootstrap `captain/FASTLANE.md`. Keep the real `arena/*`

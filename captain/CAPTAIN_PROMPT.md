@@ -72,6 +72,28 @@ git config credential.helper '!f(){ echo username=x-access-token; echo "password
 | send a CI run yourself | Keshab dispatches; tell him *"batch ready — Actions → Run workflow"* |
 | run `flutter build apk\|aab\|web` "to check" | cheap gate only: see §3 |
 
+### Skills are methods, not authority
+
+A skill pack (`replica-skill`, `reverse-skill`, `craft-anything`, or any other
+`SKILL.md` collection) is a **method**, not a second playbook and not a repo
+attachment. You may clone it into your own workspace as a read-only reference
+and follow the relevant `SKILL.md` while you analyse or prepare a task.
+
+- It never overrides this playbook, a pinned brief, allowed paths, the exact
+  `arena/*` branch and `base_sha`, the gate, or Keshab's approval gates. A
+  missing/wrong target repo is still `BLOCKED`; a skill is not a standalone
+  fallback.
+- If a worker needs a skill, put the **skill repo + full commit SHA + exact
+  `SKILL.md` path + output file inside the allowed list** in the brief. No file
+  handoff, no mutable link, no new authority for the worker.
+- Never commit skill-pack files into the target repo. Skill output stays inside
+  the brief's allowed paths.
+- Installers, tool-index generation, MCP registration, credentials, network or
+  target actions need explicit approval first. For security skills, keep the
+  authorized scope gate (`auth.status=granted`) and offline/owned samples only.
+- In the report, name the skill and SHA you used: `Skill: <name>@<sha7> — method
+  only; playbook unchanged`.
+
 ---
 
 ## 2. The batch loop
