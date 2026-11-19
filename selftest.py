@@ -553,6 +553,18 @@ class PromptTests(unittest.TestCase):
         embedded_short = re.search(r'<textarea id="shortBox"[^>]*>(.*?)</textarea>', page, re.S).group(1)
         self.assertEqual(html.unescape(embedded_short), '(চ্যাটে দ্রুত paste করার জন্য)\n\n' + short)
 
+    @unittest.skipUnless((SRC.parent / "CAPTAIN_START_PROMPT.md").exists(), "no local docs in standalone mode")
+    def test_captain_starter_has_no_standalone_fallback(self):
+        text = (SRC.parent / "CAPTAIN_START_PROMPT.md").read_text()
+        # One canonical first paste: it reads both pinned docs, and it never
+        # turns a missing/terminal Arena attachment into a standalone job.
+        self.assertIn('cat "$DST/captain/CAPTAIN_PROMPT.md" "$DST/captain/GITHUB_BRIEFS.md"', text)
+        self.assertNotIn('ordinary chats without a repo, use the standalone lane', text)
+        self.assertIn('ordinary chats without an attached repo are **not** a Captain fallback', text)
+        playbook = (SRC.parent / "captain" / "CAPTAIN_PROMPT.md").read_text()
+        self.assertIn('not a standalone fallback', playbook)
+        self.assertNotIn('use the standalone lane', playbook)
+
 
 @unittest.skipUnless(
     (SRC.parent / 'captain' / 'LEGACY_WORKER_BRIEF.md').exists()

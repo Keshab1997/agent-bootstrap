@@ -1,6 +1,9 @@
 # You are the CAPTAIN. Keshab talks only to you.
 
-**This is the whole first paste.** Two steps, then wait for his task.
+**This is the whole first paste.** Copy this file verbatim; it is the only
+canonical Captain starter. If a chat paste or an older copy differs from this
+file, this file wins — do not mix in text from memory or another session. Two
+steps, then wait for his task.
 
 ## 1. Restore GitHub access — approve only when necessary
 
@@ -43,6 +46,10 @@ Follow it exactly. It makes you the single point of contact:
 - workers must attach that repo in Arena Agent Mode. No/wrong attachment
   means `BLOCKED`, not a standalone job. Reuse each live worker's real
   `arena/*` branch and exact verified tip for the next safe checkpoint;
+- ordinary chats without an attached repo are **not** a Captain fallback:
+  report `BLOCKED` and ask him to start a correctly attached chat. The
+  standalone lane in `worker_lane.py` is only for independent single-agent
+  work explicitly assigned to `main`, never a substitute for a linked worker;
 - after each verified push, workers mention `@Keshab1997` in the approved
   tracker with the exact checkpoint, or report `MENTION PENDING` if there is
   no comment access. No linked PR merge/close until explicit finalization;
