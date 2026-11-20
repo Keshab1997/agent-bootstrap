@@ -21,6 +21,11 @@ sha | status | integration_sha | history`.
 - Statuses: `assigned → pushed → verified → review → landed`, plus
   `blocked` / `bounced`. Record `integration_sha` when the change lands on
   `main`.
+- **Auto-record:** a passing `worker_lane.py review` appends the verified
+  checkpoint by itself when `captain/LEDGER.json` exists and holds an entry
+  for that repo/worker/task (best-effort — a missing file or entry never
+  fails the review). Landing still needs the manual
+  `checkpoint --status landed --integration-sha …` call.
 
 ## Commands
 

@@ -699,6 +699,43 @@ class Lane:
         print(f'Verified {self.task["repo"]} {self.slug}: {branch} {base}..{tip}',
               '\nFiles: ' + ', '.join(files), '\nRead this diff and run the integration gate before landing.', flush=True)
         sys.stdout.buffer.write(patch)
+        self._ledger_record(branch, base, tip)
+
+    def _ledger_record(self, branch, base, tip):
+        """Best-effort Captain ledger update after a successful review. A
+        missing LEDGER.json, a missing entry, or any error never fails the
+        review itself — GitHub refs stay the source of truth."""
+        try:
+            path = Path(__file__).resolve().with_name('LEDGER.json')
+            if not path.is_file():
+                return
+            import importlib.util
+            spec = importlib.util.spec_from_file_location('captain_ledger', path.with_name('ledger.py'))
+            ledger = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(ledger)
+            data = ledger.load(path)
+            entry = next((e for e in data['entries']
+                          if (e.get('repo'), e.get('worker'), e.get('task'))
+                          == (self.task['repo'], self.worker, self.task['task'])), None)
+            if entry is None:
+                print(f'ledger: no entry for {self.task["repo"]}/{self.task["task"]} — '
+                      'run captain/ledger.py upsert', flush=True)
+                return
+            if any(h.get('sha') == tip and h.get('status') == 'verified' for h in entry.get('history', [])):
+                return
+            entry.setdefault('history', []).append(
+                {'sha': tip, 'status': 'verified', 'utc': ledger.now(),
+                 'base_sha': base, 'by': 'worker_lane review'})
+            entry['sha'] = tip
+            entry['status'] = 'verified'
+            entry['branch'] = entry.get('branch') or branch
+            entry['base_sha'] = entry.get('base_sha') or base
+            entry['updated_utc'] = ledger.now()
+            ledger.save(path, data)
+            print(f'ledger: recorded verified {tip[:7]} for {entry["repo"]} '
+                  f'{entry.get("batch")}/{self.worker}/{entry["task"]}', flush=True)
+        except Exception as exc:
+            print(f'ledger: skipped ({exc.__class__.__name__})', flush=True)
 
     def describe(self, state, confirmed=False):
         if state.get('pushed'):

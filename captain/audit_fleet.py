@@ -29,6 +29,11 @@ BOOT = Path(__file__).resolve().parent.parent
 GH = BOOT / "gh_app.py"
 PACK_PIN_RE = re.compile(r"flutter-builder:agent-pack:start\s+v?([0-9A-Za-z._-]+)")
 REUSABLE_RE = re.compile(r"uses:\s*Keshab1997/flutter-builder/\.github/workflows/([\w.-]+)@([\w.-]+)")
+SECRET_RE = re.compile(
+    r"(\.jks|\.keystore|\.p12|\.p8|\.pem)$|"
+    r"(^|/)(key\.properties|google-services\.json|id_rsa[^/]*|\.env|\.env\.[^/]+)$",
+    re.IGNORECASE)
+SECRET_OK_RE = re.compile(r"\.(example|sample|template)$", re.IGNORECASE)
 
 
 def api(path: str, timeout: int = 45):
@@ -117,7 +122,17 @@ def audit_repo(repo: dict | str) -> dict:
         m = REUSABLE_RE.search(text)
         out["ci_reusable_pin"] = f"{m.group(1)}@{m.group(2)}" if m else "standalone"
 
+    ci_pin_ver = None
+    if out["ci_reusable_pin"] and out["ci_reusable_pin"] != "standalone":
+        ci_pin_ver = out["ci_reusable_pin"].split("@", 1)[1].lstrip("vV")
+    out["pin_drift"] = bool(out["pack_pin"] and ci_pin_ver
+                            and out["pack_pin"].lstrip("vV") != ci_pin_ver)
+
+    out["secrets"] = sorted(p for p in paths if SECRET_RE.search(p) and not SECRET_OK_RE.search(p))
     out["gaps"] = []
+    if out["secrets"]:
+        out["gaps"].append(f"TRACKED SECRET FILES ({len(out['secrets'])}): "
+                           + ", ".join(out["secrets"][:4]))
     if not out["flutter"]:
         out["gaps"].append("no pubspec.yaml/melos.yaml (not a Flutter repo?)")
     else:
@@ -138,6 +153,30 @@ def yn(v) -> str:
     return "-" if v is None else ("yes" if v else "NO")
 
 
+def stable_vs_warm() -> str:
+    """Fleet maintenance hint: does the warm SDK cache cover Google's current stable?"""
+    import urllib.request
+    try:
+        with urllib.request.urlopen(
+                "https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json",
+                timeout=20) as r:
+            man = json.loads(r.read().decode())
+        stable_hash = man["current_release"]["stable"]
+        stable = next(x["version"] for x in man["releases"]
+                      if x.get("hash") == stable_hash and x.get("channel") == "stable"
+                      and "linux" in x.get("archive", ""))
+        with urllib.request.urlopen(
+                "https://github.com/Keshab1997/flutter-bootstrap/releases/download/"
+                "sdk-cache/cache-manifest.json", timeout=20) as r:
+            warm = sorted((json.loads(r.read().decode()).get("entries") or {}))
+        line = f"warm SDK cache: {', '.join(warm) or 'none'} | Google stable: {stable}"
+        if stable not in warm:
+            line += "  -> REPACK: bash pack.sh (once that version is installed anywhere)"
+        return line
+    except Exception as exc:
+        return f"stable-vs-warm check skipped ({exc.__class__.__name__})"
+
+
 def main() -> int:
     p = argparse.ArgumentParser(prog="audit_fleet.py", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -155,13 +194,17 @@ def main() -> int:
     if args.json:
         print(json.dumps(results, indent=1))
     else:
-        hdr = ("repo", "pack pin", "preflight", "loop", "watch", "AGENTS", "ci.yml", "dispatch", "ci kind", "gaps")
+        hdr = ("repo", "pack pin", "pins", "preflight", "loop", "watch", "AGENTS",
+               "ci.yml", "dispatch", "ci kind", "secrets", "gaps")
         rows = [hdr]
         for r in results:
+            pins = ("DRIFT" if r.get("pin_drift")
+                    else ("ok" if r.get("pack_pin") and r.get("ci_reusable_pin") not in (None, "standalone") else "-"))
             rows.append((
-                r["repo"].split("/", 1)[1], str(r["pack_pin"] or "-"), yn(r["preflight"]),
+                r["repo"].split("/", 1)[1], str(r["pack_pin"] or "-"), pins, yn(r["preflight"]),
                 yn(r["agent_loop"]), yn(r["ci_watch"]), yn(r["agents_md"]), yn(r["ci_yml"]),
-                yn(r["ci_dispatch"]), str(r["ci_reusable_pin"] or "-"), str(len(r["gaps"])),
+                yn(r["ci_dispatch"]), str(r["ci_reusable_pin"] or "-"),
+                (f"{len(r['secrets'])}!!" if r.get("secrets") else "-"), str(len(r["gaps"])),
             ))
         widths = [max(len(row[i]) for row in rows) for i in range(len(hdr))]
         for i, row in enumerate(rows):
@@ -176,6 +219,8 @@ def main() -> int:
                 print(f"  {r['repo']}: " + "; ".join(r["gaps"]))
         else:
             print("all audited repos carry the full agent pack — no gaps.")
+        print()
+        print(stable_vs_warm())
     return 0
 
 

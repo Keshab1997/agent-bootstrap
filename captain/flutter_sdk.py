@@ -248,18 +248,52 @@ def _warm_base(env):
     return str(env.get('FB_WARM_CACHE_BASE') or WARM_BASE).rstrip('/')
 
 
-def _warm_entry(version, env):
-    """Pinned warm-cache entry for `version`, or None. The probe goes through
-    the module-level urlopen so offline/mocked environments fail here cheaply
-    and the official path takes over."""
+def _warm_manifest(env):
+    """The pinned warm-cache manifest. The probe goes through the module-level
+    urlopen so offline/mocked environments fail here cheaply and the official
+    path takes over."""
     with urlopen(_warm_base(env) + '/cache-manifest.json', timeout=15) as stream:
         manifest = json.loads(stream.read().decode('utf-8'))
-    entry = (manifest or {}).get('entries', {}).get(version)
-    if (isinstance(entry, dict) and isinstance(entry.get('asset'), str)
-            and re.fullmatch(r'[0-9a-f]{64}', str(entry.get('sha256', '')))
-            and isinstance(entry.get('bytes'), int) and entry['bytes'] > 0):
-        return entry
-    return None
+    return manifest if isinstance(manifest, dict) else {}
+
+
+def _valid_entry(entry) -> bool:
+    return (isinstance(entry, dict) and isinstance(entry.get('asset'), str)
+            and bool(re.fullmatch(r'[0-9a-f]{64}', str(entry.get('sha256', ''))))
+            and isinstance(entry.get('bytes'), int) and entry['bytes'] > 0)
+
+
+def _ensure_zstd(cache, env, manifest):
+    """System zstd, else the sha-pinned self-contained bundle from the warm
+    release (binary + its non-libc shared libs, run via LD_LIBRARY_PATH),
+    else (None, None) so the caller falls back to the official archive."""
+    found = shutil.which('zstd')
+    if found:
+        return [found], env
+    tools = cache / 'tools'
+    binary = tools / 'bin' / 'zstd'
+    if not binary.is_file():
+        entry = (manifest.get('tools') or {}).get('zstd_bundle')
+        if not _valid_entry(entry) or not shutil.which('curl'):
+            return None, None
+        bundle = cache / '.zstd-bundle.tar.gz'
+        try:
+            if not _warm_download(_warm_base(env) + '/' + entry['asset'],
+                                  bundle, entry['sha256'], entry['bytes']):
+                return None, None
+            tools.mkdir(parents=True, exist_ok=True)
+            if subprocess.run(['tar', '-xzf', str(bundle), '-C', str(tools)],
+                              capture_output=True, timeout=120).returncode != 0:
+                return None, None
+        finally:
+            bundle.unlink(missing_ok=True)
+    if not binary.is_file():
+        return None, None
+    zenv = dict(env)
+    lib = str(tools / 'lib')
+    zenv['LD_LIBRARY_PATH'] = lib + (os.pathsep + zenv['LD_LIBRARY_PATH']
+                                     if zenv.get('LD_LIBRARY_PATH') else '')
+    return [str(binary)], zenv
 
 
 def _warm_download(url, target, expected_sha, size):
@@ -304,10 +338,14 @@ def _install_warm(version, root, cache, env):
     """Install from the warm cache; True when `root` holds a verified SDK.
     Every failure mode returns False so the caller can use the official
     archive; `root` is only ever created by the final atomic rename."""
-    entry = _warm_entry(version, env)
-    if entry is None:
+    manifest = _warm_manifest(env)
+    entry = (manifest.get('entries') or {}).get(version)
+    if not _valid_entry(entry):
         return False
-    if not (shutil.which('curl') and shutil.which('zstd')):
+    if not shutil.which('curl'):
+        return False
+    zstd, zenv = _ensure_zstd(cache, env, manifest)
+    if zstd is None:
         return False
     started = time.time()
     with tempfile.TemporaryDirectory(prefix='.warm-', dir=cache) as temp:
@@ -316,7 +354,7 @@ def _install_warm(version, root, cache, env):
         if not _warm_download(_warm_base(env) + '/' + entry['asset'],
                               archive, entry['sha256'], entry['bytes']):
             return False
-        decoder = subprocess.Popen(['zstd', '-dcq', str(archive)], stdout=subprocess.PIPE)
+        decoder = subprocess.Popen(zstd + ['-dcq', str(archive)], stdout=subprocess.PIPE, env=zenv)
         unpacker = subprocess.Popen(['tar', '-xf', '-', '-C', str(temp), '--no-same-owner'],
                                     stdin=decoder.stdout, env=env)
         if decoder.stdout:
@@ -332,6 +370,63 @@ def _install_warm(version, root, cache, env):
     print(f'Installed Flutter {version} from the warm cache in {time.time() - started:.0f}s.',
           file=sys.stderr, flush=True)
     return True
+
+
+def restore_pub_cache(cache, env):
+    """Best-effort: seed an empty PUB_CACHE from the warm release's pub-cache
+    snapshot (sha256-pinned; public pub.dev packages only). Never raises,
+    never touches a non-empty cache, and costs no network when disabled."""
+    try:
+        if not _warm_enabled(env):
+            return False
+        # Honour the caller's PUB_CACHE (setup.sh uses /var/tmp/pub-cache);
+        # fall back to a pub-cache next to the SDK cache.
+        pub = Path(str(env['PUB_CACHE'])) if env.get('PUB_CACHE') else cache / 'pub-cache'
+        if pub.exists() and any(pub.iterdir()):
+            return False
+        manifest = _warm_manifest(env)
+        entry = (manifest.get('pub') or {}).get('cache')
+        if not _valid_entry(entry) or not shutil.which('curl'):
+            return False
+        zstd, zenv = _ensure_zstd(cache, env, manifest)
+        if zstd is None:
+            return False
+        started = time.time()
+        prepare_cache(cache)
+        pub.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        # Stage beside the destination so the final rename stays on one filesystem.
+        stage = pub.parent if pub.parent != cache else cache
+        with tempfile.TemporaryDirectory(prefix='.pubwarm-', dir=str(stage)) as temp:
+            temp = Path(temp)
+            archive = temp / Path(entry['asset']).name
+            if not _warm_download(_warm_base(env) + '/' + entry['asset'],
+                                  archive, entry['sha256'], entry['bytes']):
+                return False
+            staging = temp / 'out'
+            staging.mkdir()
+            decoder = subprocess.Popen(zstd + ['-dcq', str(archive)],
+                                       stdout=subprocess.PIPE, env=zenv)
+            unpacker = subprocess.Popen(['tar', '-xf', '-', '-C', str(staging), '--no-same-owner'],
+                                        stdin=decoder.stdout, env=env)
+            if decoder.stdout:
+                decoder.stdout.close()
+            if unpacker.wait(timeout=600) != 0 or decoder.wait(timeout=60) != 0:
+                return False
+            archive.unlink(missing_ok=True)
+            extracted = staging / 'pub-cache'
+            if not extracted.is_dir():
+                dirs = [p for p in staging.iterdir() if p.is_dir()]
+                if len(dirs) != 1:
+                    return False
+                extracted = dirs[0]
+            if pub.exists():
+                shutil.rmtree(pub)
+            extracted.rename(pub)
+        print(f'Seeded PUB_CACHE from the warm snapshot in {time.time() - started:.0f}s.',
+              file=sys.stderr, flush=True)
+        return True
+    except Exception:
+        return False
 
 
 def install(version, root, cache, env):
@@ -367,6 +462,7 @@ def ensure_flutter(version, env, cache=CACHE):
             other = Path(existing).resolve().parent.parent
             if installed_version(other, env) == version:
                 prepare_cache(cache)
+                restore_pub_cache(cache, env)
                 return other
         if not (sys.platform == 'linux' and platform.machine().lower() in {'x86_64', 'amd64'}):
             raise SDKError('Automatic install needs Linux x86-64 or an exact trusted Flutter SDK on PATH.')
@@ -379,6 +475,7 @@ def ensure_flutter(version, env, cache=CACHE):
                     raise SDKError(f'Invalid Flutter cache at {root}; inspect it before replacing anything.')
             else:
                 install(version, root, cache, env)
+        restore_pub_cache(cache, env)
         return root
     except (OSError, EOFError, ValueError, HTTPException, subprocess.SubprocessError) as exc:
         raise SDKError(f'Flutter {version} setup failed: {exc}') from exc

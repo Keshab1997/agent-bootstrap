@@ -598,7 +598,22 @@ class SDKTests(unittest.TestCase):
             env = {k: v for k, v in self.env.items() if k != 'FB_WARM_CACHE'}
             location = sdk.ensure_flutter(self.version, env, self.cache)
         self.assertEqual(location, self.cache / self.version)
-        self.assertEqual(opened.call_count, 3)  # warm probe + manifest + one archive
+        # SDK warm probe + official manifest + archive + pub-cache warm probe
+        self.assertEqual(opened.call_count, 4)
+
+    def test_pub_cache_seed_never_touches_an_existing_cache(self):
+        pub = self.root / 'pub-cache'
+        (pub / 'hosted').mkdir(parents=True)
+        with mock.patch.object(sdk, 'urlopen', side_effect=AssertionError('no network')) as probe:
+            self.assertFalse(sdk.restore_pub_cache(self.cache, {'PUB_CACHE': str(pub)}))
+            self.assertEqual(probe.call_count, 0)  # a warm cache is never re-probed
+        self.assertTrue((pub / 'hosted').is_dir())
+
+    def test_pub_cache_seed_is_off_with_the_warm_cache(self):
+        with mock.patch.object(sdk, 'urlopen', side_effect=AssertionError('no network')) as probe:
+            self.assertFalse(sdk.restore_pub_cache(self.cache, {'FB_WARM_CACHE': '0'}))
+            self.assertEqual(probe.call_count, 0)
+        self.assertFalse((self.cache / 'pub-cache').exists())
 
     def test_checksum_or_version_mismatch_never_publishes_sdk(self):
         for reported_version, verified, expected in ((self.version, False, 'SHA-256'), ('3.47.9', True, 'usable')):
