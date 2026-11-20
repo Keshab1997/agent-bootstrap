@@ -714,7 +714,7 @@ def load_tests(loader, suite, pattern):
     # Load explicit sibling files so the local suite also works with python -I.
     pack = SRC.parent / 'captain'
     if (pack / 'fastlane_selftest.py').is_file():
-        for name in ('flutter_sdk', 'worker_lane', 'fastlane_selftest'):
+        for name in ('flutter_sdk', 'worker_lane', 'audit_fleet', 'fastlane_selftest'):
             module = load_module(name, pack / f'{name}.py')
         suite.addTests(loader.loadTestsFromModule(module, pattern=pattern))
     return suite

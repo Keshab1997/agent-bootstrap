@@ -15,6 +15,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+import audit_fleet as audit
 import flutter_sdk as sdk
 import worker_lane as work
 
@@ -804,3 +805,38 @@ class SDKTests(unittest.TestCase):
             with self.assertRaises(sdk.SDKError):
                 sdk.ensure_flutter(self.version, self.env, self.cache)
         self.assertEqual(calls_404, 1)
+
+
+class AuditSecretTests(unittest.TestCase):
+    """The fleet audit must report a leak, not a template a repo tracks on purpose."""
+
+    def classify(self, path, text):
+        with mock.patch.object(audit, 'file_text', return_value=text):
+            return audit.secret_is_real('Keshab1997/fixture', path, 'main')
+
+    def test_key_material_is_always_a_finding(self):
+        for path in ('android/app/upload-keystore.jks', 'ios/fastlane/appstore.p8',
+                     'secrets/id_rsa', 'server/tls.pem'):
+            self.assertTrue(self.classify(path, None), path)
+
+    def test_real_firebase_key_is_a_finding(self):
+        text = ('{"client":[{"api_key":[{"current_key":'
+                '"AIzaSyBUp08GG5QRnX58hQTGalTGjiBhWADKtZg"}]}]}')
+        self.assertTrue(self.classify('android/app/google-services.json', text))
+
+    def test_empty_env_template_is_not_a_leak(self):
+        self.assertFalse(self.classify('flutter_app/.env', ''))
+        self.assertFalse(self.classify('flutter_app/.env', '# tracked on purpose: no values\n'))
+
+    def test_env_with_a_real_value_is_a_finding(self):
+        self.assertTrue(self.classify('.env', 'GEMINI_API_KEY=AIzaSyBUp08GG5QRnX58hQTGalTGjiBhWADKtZg\n'))
+
+    def test_env_placeholder_is_not_a_leak(self):
+        self.assertFalse(self.classify('.env', 'GEMINI_API_KEY=your-key-goes-here-xxxx\n'))
+
+    def test_key_properties_password_is_a_finding(self):
+        self.assertTrue(self.classify('android/key.properties', 'storePassword=hunter2hunter2hunter2\n'))
+        self.assertFalse(self.classify('android/key.properties', 'storePassword=changeme\n'))
+
+    def test_unreadable_config_is_reported_not_passed(self):
+        self.assertTrue(self.classify('android/key.properties', None))
