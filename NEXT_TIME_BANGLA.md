@@ -9,6 +9,12 @@ Captain-এর নতুন চ্যাটে [`CAPTAIN_START_PROMPT.md`](CAPTA
 তারপর কোন repo-তে কী কাজ চান বলুন। একই Captain workspace ব্যবহার চালিয়ে গেলে
 সেভ করা login-টাই কাজে লাগবে।
 
+এক লাইনে বুট (clone → pairing → status → pull → playbook একসাথে):
+
+```text
+bash <(curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/captain_up.sh)
+```
+
 শুধু একজন agent দিয়ে কাজ হলে [`AGENT_START_PROMPT.md`](AGENT_START_PROMPT.md)
 বা [`PROMPT-FOR-NEW-AGENT.txt`](PROMPT-FOR-NEW-AGENT.txt) দিন।
 

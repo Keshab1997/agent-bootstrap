@@ -10,8 +10,10 @@ CI, or share secrets.
 
 Use [GitHub briefs](GITHUB_BRIEFS.md) and [Worker Fast Lane](FASTLANE.md).
 Arena permits one linked PR per chat; merging **or closing** it ends pushes
-from that chat. Keep worker PRs unopened where possible, or open if already
-created. Do not merge a linked PR just to complete a task.
+from that chat **for good**. Default policy (Keshab-approved 2026-11-20): a
+worker **never opens a PR** — a checkpoint is a pushed, tested branch commit,
+not a PR. If Arena auto-created one, leave it open and unmerged until batch
+finalize. Never merge or close a linked PR just to complete a task.
 
 ```text
 Keshab → Captain → pinned GitHub docs → repo-linked workers
@@ -76,6 +78,11 @@ python3 "$DST/gh_app.py" connect       # reuse -> refresh -> resume; ask only if
 python3 "$DST/gh_app.py" status        # verdict: PAIRED
 ```
 
+One-shot alternative: `bash captain_up.sh` from this clone (or
+`bash <(curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/captain_up.sh)`
+from an empty sandbox) runs this whole block — clone/repair, pair, status,
+ff-pull, print playbook — in one command.
+
 Before each new batch, read the latest [brief template](WORKER_BRIEF_TEMPLATE.md),
 [GitHub handoff](GITHUB_BRIEFS.md) and [Fast Lane](FASTLANE.md) from
 `agent-bootstrap` `origin/main`. In a verified bootstrap checkout on `main`,
@@ -109,7 +116,7 @@ git config credential.helper '!f(){ echo username=x-access-token; echo "password
 | merge a worker branch you have not reviewed | read the actual diff; verify allowed paths and secrets first |
 | let two workers own the same file in one batch | partition by file, not by feature |
 | edit CI workflows unless the brief says so | workflows are shared surface |
-| send a CI run yourself | Keshab dispatches; tell him *"batch ready — Actions → Run workflow"* |
+| dispatch CI mid-task, or instead of passing the gate | after *"batch ready"*, dispatch it yourself: `python3 captain/ci_dispatch.py <owner/repo> --watch 900` (Keshab-approved 2026-11-20); red run → read the failing log first. Workers never dispatch |
 | run `flutter build apk\|aab\|web` "to check" | cheap gate only: see §3 |
 
 ### Skills are methods, not authority
@@ -199,7 +206,11 @@ approved. No chat-to-chat delivery or automated polling is assumed.
 Use the actual branch, `base_sha` and pushed `sha` from the report, plus the
 original task JSON at the ledger's pinned docs commit. `BLOCKED` isn't a
 handoff. Record the brief and each checkpoint in the
-[Fast Lane ledger](FASTLANE.md#3-captain-verify-review-then-assign-the-next-task).
+[Fast Lane ledger](FASTLANE.md#3-captain-verify-review-then-assign-the-next-task) —
+one command each: `python3 captain/ledger.py upsert …` at assignment and
+`checkpoint …` on verify/land (machine-readable `captain/LEDGER.json`, see
+[LEDGER.md](LEDGER.md)); `python3 captain/batch_status.py` shows every live
+GitHub tip vs. the ledger, mentions and CI runs in one call.
 For Fast Lane use `worker_lane.py review` from the separate Captain checkout
 to verify the remote tip, parent and scope before reading the diff. Ask for
 missing report fields; don't guess a branch or base. No file handoff.
@@ -284,6 +295,11 @@ Evidence: pytest 256 passed / preflight ok / diff scope clean
 Not touched: <what you deliberately left alone>
 Next: <big tasks already out / what remains of the project>
 ```
+
+After the report, dispatch the batch's CI yourself (Keshab-approved
+2026-11-20): `python3 captain/ci_dispatch.py <owner/repo> --watch 900` —
+run long watches in a background process and keep integrating meanwhile.
+Red run: read the failing log first, fix, land, re-dispatch.
 
 ### 2f. Finalize the batch, not the task
 

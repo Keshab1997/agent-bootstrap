@@ -7,6 +7,11 @@ steps, then wait for his task.
 
 ## 1. Restore GitHub access — approve only when necessary
 
+One-shot: `bash captain_up.sh` inside this clone — or
+`bash <(curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/captain_up.sh)`
+from an empty sandbox — performs steps 1–2 (clone/repair → pair → status →
+ff-pull → print playbook). The commands below remain the reference.
+
 ```bash
 DST=/home/user/agent-bootstrap     # this clone is also your playbook — keep it here
 [ -f "$DST/gh_app.py" ] || git clone https://github.com/Keshab1997/agent-bootstrap "$DST"

@@ -105,7 +105,11 @@ landing (workers never edit `task.json` themselves).
 
 1. Keep a ledger **outside app repos**: `repo | worker | task | brief URL/SHA |
    tracker/report | branch | base_sha | sha | review/landed/blocked |
-   integration_sha`. Retain the original task JSON. Assign up to three big,
+   integration_sha`. Retain the original task JSON. Tooling:
+   `captain/ledger.py` writes these columns to `captain/LEDGER.json`
+   (gitignored — safe for private-repo batches) and `captain/batch_status.py`
+   diffs the ledger against live GitHub refs, tracker mentions and CI runs in
+   one call; see [LEDGER.md](LEDGER.md). Assign up to three big,
    disjoint filesets in parallel, one live task per worker, and work your own
    lane meanwhile ([Speed rules](CAPTAIN_PROMPT.md#speed-rules--keshabs-top-priority)).
    On a check-in read the tracker; if a mention is pending, use the worker's

@@ -148,14 +148,16 @@ that block are Keshab&#x27;s own — never delete them.
 - **Never** rerun the full battery after a small edit. If a check takes
   minutes, it belongs to CI — push and move on.
 
-## 5. CI is manual — Keshab&#x27;s button, not yours
+## 5. CI — dispatch it yourself once the batch is ready
 
-The manual Flutter CI is Keshab&#x27;s to start; repo-specific previews may still
-run on branch pushes. Do **not** wait on CI. Commit on the authorized task
-branch. When a standalone `main` batch is done, tell him:
-*&quot;batch ready — Actions → Flutter CI → Run workflow&quot;*. Read the
-result with `python3 tool/ci_watch.py`. If a run is red: **read the failing
-log first**, then fix.
+Nothing runs on a push; repo-specific previews may still run on branch
+pushes. Do **not** wait on CI mid-task, and never dispatch before the local
+gate passed. When a standalone `main` batch is done, tell Keshab *&quot;batch
+ready&quot;* and dispatch the run yourself (Keshab-approved 2026-11-20):
+`python3 /home/user/agent-bootstrap/captain/ci_dispatch.py Keshab1997/&lt;repo&gt; --watch 900`
+— button fallback: Actions → Flutter CI → Run workflow. Read the result in
+the watch output or with `python3 tool/ci_watch.py`. If a run is red: **read
+the failing log first**, then fix. Captain workers still never dispatch CI.
 
 ## 6. Working rules
 
