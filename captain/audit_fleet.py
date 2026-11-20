@@ -89,7 +89,8 @@ def audit_repo(repo: dict | str) -> dict:
         return p in paths if not out["tree_truncated"] else bool(
             api(f"/repos/{full}/contents/{p}?ref={branch}"))
 
-    out["flutter"] = has("pubspec.yaml")
+    out["flutter"] = has("pubspec.yaml") or has("melos.yaml") or any(
+        p.endswith("pubspec.yaml") and p.count("/") <= 1 for p in paths)
     out["preflight"] = has("tool/preflight.py")
     out["agent_loop"] = has("tool/agent_loop.py")
     out["ci_watch"] = has("tool/ci_watch.py")
@@ -111,7 +112,7 @@ def audit_repo(repo: dict | str) -> dict:
 
     out["gaps"] = []
     if not out["flutter"]:
-        out["gaps"].append("no pubspec.yaml (not a Flutter repo?)")
+        out["gaps"].append("no pubspec.yaml/melos.yaml (not a Flutter repo?)")
     else:
         for key, label in (("preflight", "tool/preflight.py"), ("agent_loop", "tool/agent_loop.py"),
                            ("ci_watch", "tool/ci_watch.py"), ("agents_md", "AGENTS.md"),
