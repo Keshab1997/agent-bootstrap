@@ -693,7 +693,9 @@ def cmd_api(args) -> int:
     payload = json.loads(args.data) if args.data else None
     st, d = _api(args.method.upper(), args.path, token=get_token(), payload=payload)
     if args.raw:
-        say(d.get("_raw", json.dumps(d)))
+        # _raw is set for non-JSON bodies; JSON arrays (e.g. git matching-refs)
+        # arrive as lists, which have no .get()
+        say(d.get("_raw", json.dumps(d)) if isinstance(d, dict) else json.dumps(d))
     else:
         say(f"HTTP {st}")
         say(json.dumps(d, indent=2))
