@@ -41,3 +41,6 @@ venv/
 
 # ---- node -----------------------------------------------------------------
 node_modules/
+
+# ---- captain ledger: batch state may name private repos; stays local -------
+captain/LEDGER.json

@@ -1,0 +1,34 @@
+{
+ "version": 1,
+ "updated_utc": "2026-11-20T00:00:00Z",
+ "entries": [
+  {
+   "repo": "Keshab1997/docify",
+   "batch": "b1",
+   "worker": "A",
+   "task": "home-refresh",
+   "brief_sha": "1111111111111111111111111111111111111111",
+   "brief_url": "https://github.com/Keshab1997/docify/blob/1111111111111111111111111111111111111111/docs/agent-briefs/b1/home-refresh/BRIEF.md",
+   "tracker": "worker chat (GitHub mention pending)",
+   "branch": "arena/example",
+   "base_sha": null,
+   "sha": "2222222222222222222222222222222222222222",
+   "status": "verified",
+   "integration_sha": null,
+   "note": "example entry — copy LEDGER.json shape, never commit real state",
+   "updated_utc": "2026-11-20T00:00:00Z",
+   "history": [
+    {
+     "sha": "2222222222222222222222222222222222222222",
+     "status": "pushed",
+     "utc": "2026-11-20T00:00:00Z"
+    },
+    {
+     "sha": "2222222222222222222222222222222222222222",
+     "status": "verified",
+     "utc": "2026-11-20T00:00:00Z"
+    }
+   ]
+  }
+ ]
+}
