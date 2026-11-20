@@ -101,11 +101,18 @@ def audit_repo(repo: dict | str) -> dict:
         m = PACK_PIN_RE.search(file_text(full, "AGENTS.md", branch) or "")
         out["pack_pin"] = m.group(1) if m else None
 
-    out["ci_yml"] = has(".github/workflows/ci.yml")
+    ci_candidates = sorted(p for p in paths
+                           if p.startswith(".github/workflows/") and p.endswith((".yml", ".yaml"))
+                           and "ci" in Path(p).name.lower())
+    out["ci_file"] = next((p for p in ci_candidates if Path(p).name == "ci.yml"),
+                          ci_candidates[0] if ci_candidates else None)
+    if out["ci_file"] is None and out["tree_truncated"] and has(".github/workflows/ci.yml"):
+        out["ci_file"] = ".github/workflows/ci.yml"
+    out["ci_yml"] = bool(out["ci_file"])
     out["ci_dispatch"] = None
     out["ci_reusable_pin"] = None
-    if out["ci_yml"]:
-        text = file_text(full, ".github/workflows/ci.yml", branch) or ""
+    if out["ci_file"]:
+        text = file_text(full, out["ci_file"], branch) or ""
         out["ci_dispatch"] = "workflow_dispatch" in text
         m = REUSABLE_RE.search(text)
         out["ci_reusable_pin"] = f"{m.group(1)}@{m.group(2)}" if m else "standalone"
@@ -118,7 +125,8 @@ def audit_repo(repo: dict | str) -> dict:
                            ("ci_watch", "tool/ci_watch.py"), ("agents_md", "AGENTS.md"),
                            ("ci_yml", ".github/workflows/ci.yml")):
             if not out[key]:
-                out["gaps"].append(f"missing {label}")
+                out["gaps"].append(f"missing {label}" if key != "ci_yml"
+                                   else "no CI workflow (*ci*.yml in .github/workflows)")
         if out["agents_md"] and not out["pack_pin"]:
             out["gaps"].append("AGENTS.md without agent-pack managed block")
         if out["ci_yml"] and out["ci_dispatch"] is False:
