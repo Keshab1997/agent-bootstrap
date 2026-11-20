@@ -10,7 +10,7 @@ A task checkpoint is a tested, remotely verified commit, **not** a PR.
 
 | Worker chat | Action |
 |---|---|
-| Live linked chat, correct target repo | Keep its actual `arena/*` branch and native access. Wait for Captain review before the next pinned task. |
+| Live linked chat, correct target repo | Keep its actual `arena/*` branch and native access. Wait for the Captain's next pinned brief; it follows the verification of your checkpoint, not the full review. |
 | No repo, wrong repo, or terminal linked PR | `BLOCKED`. Ask for a correctly attached session; don't work around it with a clone, new auth, or a branch switch. |
 | Task already in flight under an earlier brief | Finish or reconcile in that original lane with the same scope, branch and base. No new standalone Captain assignments. |
 
@@ -45,9 +45,11 @@ Use the printed `workdir`; read its `AGENTS.md` if present. If the target is
 `flutter-builder` or uses an older installed agent pack, any direct-to-`main`
 loop in that file is for independent work only. For a Captain task, use the
 JSON gate and this lane, not `tool/agent_loop.py`. Edit only the exact
-`allowed` paths. Do not stage, commit by hand, touch the brief files, edit
-`main`, or switch branches. Run separately in order, only if the
-previous step succeeded, and **read** the diff before publishing:
+`allowed` paths. Finish every acceptance item before `check`, deciding
+details inside those paths yourself instead of stopping to ask. Do not stage,
+commit by hand, touch the brief files, edit `main`, or switch branches. Run
+separately in order, only if the previous step succeeded, and **read** the
+diff before publishing:
 
 ```bash
 python3 -B "$lane" --checkout "$checkout" --root "$workbench" check "$task"
@@ -103,11 +105,12 @@ landing (workers never edit `task.json` themselves).
 
 1. Keep a ledger **outside app repos**: `repo | worker | task | brief URL/SHA |
    tracker/report | branch | base_sha | sha | review/landed/blocked |
-   integration_sha`. Retain the original task JSON. Assign up to three
-   disjoint filesets in parallel, one live task per worker. On a check-in read
-   the tracker; if a mention is pending, use the worker's report and post it
-   only after verification with approved access. No cross-chat polling is
-   implied.
+   integration_sha`. Retain the original task JSON. Assign up to three big,
+   disjoint filesets in parallel, one live task per worker, and work your own
+   lane meanwhile ([Speed rules](CAPTAIN_PROMPT.md#speed-rules--keshabs-top-priority)).
+   On a check-in read the tracker; if a mention is pending, use the worker's
+   report and post it only after verification with approved access. No
+   cross-chat polling is implied.
 2. In a separate verified Captain checkout, fetch and verify the exact server
    ref and scope. Use the original JSON from the pinned docs commit, never a
    spec generated from the worker's diff. Set `branch`, `base` and `tip` from
@@ -120,13 +123,15 @@ landing (workers never edit `task.json` themselves).
      review "$original_task_json"
    ```
 
-   Read the patch, check scope and secrets, and run the integration gate on
+   Once this passes, publish the worker's next task (step 3) first. Then read
+   the patch, check scope and secrets, and run the integration gate on
    fresh `main` before landing. Use [range-only integration](CAPTAIN_PROMPT.md#2d-integrate--one-reviewed-workstream-at-a-time):
    `main` never points at the actual linked worker commits mid-lane. Apply
    only the reviewed base-to-tip delta as a new Captain commit if authorized;
    use a Captain review branch if PRs are required.
-3. For the next task in that chat, publish a **new** pinned GitHub brief with
-   the exact same branch and last Captain-verified pushed SHA as `base_sha`.
+3. For the next big task in that chat, publish a **new** pinned GitHub brief
+   right after step 2's verification, with the exact same branch and last
+   Captain-verified pushed SHA as `base_sha`.
    If required upstream changes aren't in that checkout, wait or start a
    fresh properly attached chat at current `main`. Do not rebase or reset the
    old chat to update it. Fix a pushed task with a new corrective checkpoint,

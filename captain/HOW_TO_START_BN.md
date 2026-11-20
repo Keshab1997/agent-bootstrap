@@ -11,6 +11,11 @@ Captain চালু থাকলে starter আবার লাগবে না
 প্রতি worker-এর জন্য pinned link দাও। এখন কোনো worker PR merge/close নয়।
 ```
 
+**গতি সবার আগে:** Captain প্রতিটি worker-কে বড়, সম্পূর্ণ কাজ দেবে (পুরো
+feature/screen + test — ছোট ছোট টুকরো নয়), সব worker-এর link একসাথে দেবে।
+Worker-রা কাজ করার ফাঁকে Captain নিজের অংশ (shared file, জোড়া লাগানো, ছোট
+fix) নিজেই শেষ করবে — বসে অপেক্ষা করবে না।
+
 Captain একই কাজের repo-তে `captain/briefs/<batch>` branch-এ `BRIEF.md` আর
 `task.json` push করবে। `main`-এ brief যাবে না। GitHub-এ commit যাচাই করার
 পর Captain প্রতি worker-এর জন্য এক লাইনের link দেবে। পুরো brief copy/paste
@@ -42,9 +47,11 @@ Batch <id>-এর GitHub রিপোর্ট দেখে A-এর checkpoint 
 ঠিক থাকলে একই A chat-এর পরের pinned brief publish করো।
 ```
 
-Captain শুধু ওই task-এর base→tip diff review করবে। পরের brief-এ একই
-branch আর শেষ যাচাই করা SHA যাবে। ওই base-এ দরকারি upstream code না থাকলে
-নতুন repo-linked chat নিন; পুরোনো branch reset/rebase করবেন না।
+Checkpoint যাচাই হলেই Captain সঙ্গে সঙ্গে পরের বড় brief দেবে; পুরো review
+আর integration worker কাজ করার সময়েই চলবে। Captain শুধু ওই task-এর
+base→tip diff review করবে। পরের brief-এ একই branch আর শেষ যাচাই করা SHA
+যাবে। ওই base-এ দরকারি upstream code না থাকলে নতুন repo-linked chat নিন;
+পুরোনো branch reset/rebase করবেন না।
 
 ## ৪. Batch সত্যিই শেষ হলে
 

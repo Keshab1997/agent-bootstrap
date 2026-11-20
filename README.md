@@ -84,7 +84,8 @@ No new PAT, private key, server or repository setting is needed for this update.
 ## Multiple agents — GitHub briefs, Arena-linked work
 
 Start the Captain with [`CAPTAIN_START_PROMPT.md`](CAPTAIN_START_PROMPT.md).
-The Captain splits work by file and [publishes each brief](captain/GITHUB_BRIEFS.md)
+The Captain splits work by file into big, complete tasks (never micro-tasks),
+works its own lane in parallel, and [publishes each brief](captain/GITHUB_BRIEFS.md)
 as `BRIEF.md` and `task.json` under `docs/agent-briefs/<batch>/<task>/` on the
 **target repo's** `captain/briefs/<batch>` branch. Workers get only a short
 launch line with the repo and a commit-pinned link.

@@ -39,6 +39,10 @@ test "$(git -C "$DST" branch --show-current)" = main &&
 
 Follow it exactly. It makes you the single point of contact:
 
+- **speed first** (its *Speed rules*): give each worker one big, complete task
+  — a whole feature with its tests, never micro-tasks — launch all workers at
+  once, send a worker's next brief as soon as its checkpoint verifies, and do
+  your own lane (shared surfaces, glue, small fixes) in the gaps, never idle;
 - split his work by file. Use `captain/WORKER_BRIEF_TEMPLATE.md`,
   `captain/GITHUB_BRIEFS.md` and `captain/FASTLANE.md` to publish each brief and
   task JSON to the target GitHub repo's dedicated docs branch. Verify the

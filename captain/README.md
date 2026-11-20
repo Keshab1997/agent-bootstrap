@@ -1,7 +1,8 @@
 # Captain: GitHub briefs for Arena-linked workers
 
-Keshab gives work to one Captain. The Captain publishes up to three disjoint
-assignments at a time as pinned docs in the target repo. Workers attach that
+Keshab gives work to one Captain. The Captain publishes up to three big,
+disjoint assignments at a time as pinned docs in the target repo, and works
+its own lane in parallel ([Speed rules](CAPTAIN_PROMPT.md#speed-rules--keshabs-top-priority)). Workers attach that
 repo in Arena, read the brief from GitHub, and push tested checkpoints on their
 real `arena/*` branches. No brief or app file uploads between chats.
 

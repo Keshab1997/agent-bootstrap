@@ -61,9 +61,10 @@ copy/download/upload করবেন না। ভুল বা missing attachme
 
 Worker একই `arena/*` branch-এ checkpoint push করবে। Push যাচাই হলে
 অনুমোদিত tracking issue-তে `@Keshab1997` mention করবে। Comment access না
-থাকলে Arena-তে checkpoint link আর `MENTION PENDING` দেবে। Captain review
-করে শেষ যাচাই করা SHA থেকে পরের brief publish করবে। **PR merge বা close
-করলে ওই chat আর push করতে পারে না** — সিদ্ধান্ত batch-এর শেষে। নতুন base
+থাকলে Arena-তে checkpoint link আর `MENTION PENDING` দেবে। Captain checkpoint
+যাচাই করেই শেষ যাচাই করা SHA থেকে পরের বড় brief publish করবে; পুরো review
+worker কাজ করার সময়ে। **PR merge বা close করলে ওই chat আর push করতে পারে
+না** — সিদ্ধান্ত batch-এর শেষে। নতুন base
 দরকার হলে সঠিক repo attach করে নতুন chat নিন। [ধাপে ধাপে ব্যবহার](captain/HOW_TO_START_BN.md)।
 
 ## Authenticator-এর GitHub code দিলে কি হবে?

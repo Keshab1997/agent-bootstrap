@@ -5,21 +5,32 @@ First task with that repo attached in Arena; `null` is valid only when the
 attached branch is at current `main`. Put the prose in `BRIEF.md` (with
 the approved tracking issue if available) and the JSON in `task.json`.
 Use a confirmed compatible Flutter pin; this version is illustrative.
+One big deliverable per brief — see the [Speed rules](../CAPTAIN_PROMPT.md#speed-rules--keshabs-top-priority).
 
-**Goal and acceptance:** Stop Home from overflowing at 360×800 and add a widget test for that viewport.
+**Goal:** Finish the Home screen: responsive layout, document cards, and empty/loading/error states, all covered by widget tests.
 
-**Interface / exclusions:** Keep the public widget name and constructor. No theme, routing, localization, or dependency edits.
+**Acceptance:**
+
+1. No overflow at 360×800, 412×915 and 800×1280.
+2. Documents render as `DocumentCard`s; tapping one calls the existing `onOpen` callback.
+3. Empty, loading and error states each have their own widget; the error state's Retry button calls the existing `onRefresh` callback.
+4. `test/home_screen_test.dart` covers all three viewports and all three states.
+
+**Interface / exclusions:** Keep `HomeScreen`'s public name and constructor. No theme, routing, localization, or dependency edits.
 
 ```json
 {
   "repo": "Keshab1997/docify",
   "worker": "A",
-  "task": "home-overflow",
+  "task": "home-screen-complete",
   "allowed": [
     "lib/screens/home_screen.dart",
+    "lib/widgets/home/home_header.dart",
+    "lib/widgets/home/document_card.dart",
+    "lib/widgets/home/home_states.dart",
     "test/home_screen_test.dart"
   ],
-  "commit": "fix(home): fit the home screen in a 360px viewport",
+  "commit": "feat(home): responsive home with cards and empty, loading and error states",
   "check": {
     "kind": "flutter",
     "version": "3.50.0",
