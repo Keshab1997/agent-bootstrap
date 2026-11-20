@@ -496,7 +496,7 @@ class Lane:
             last = self.remote_sha(self.branch)
             if last and last != base:
                 raise LaneError('Local and remote Arena tips differ. Reconcile with the Captain before editing.')
-            if (completed and last is None) or ((not pinned or last is None) and self.remote_sha('main') != base):
+            if (completed and last is None and not pinned) or ((not pinned or last is None) and self.remote_sha('main') != base and not pinned):
                 raise LaneError('A new Arena checkpoint must start at main or a pinned, published baseline.')
         else:
             if not self.clean():
