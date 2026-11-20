@@ -555,7 +555,7 @@ class SDKTests(unittest.TestCase):
         self.root = Path(tmp.name)
         self.cache = self.root / 'cache'
         self.release_path = f'stable/linux/flutter_linux_{self.version}-stable.tar.xz'
-        self.env = {'PATH': os.defpath, 'CI': 'true'}
+        self.env = {'PATH': os.defpath, 'CI': 'true', 'FB_WARM_CACHE': '0'}  # official-path tests stay download-exact
 
     def archive(self, version):
         stream = io.BytesIO()
@@ -588,6 +588,17 @@ class SDKTests(unittest.TestCase):
             self.assertEqual(location, self.cache / self.version)
             self.assertEqual(sdk.ensure_flutter(self.version, self.env, self.cache), location)
             self.assertEqual(opened.call_count, 2)  # manifest + one archive
+
+    def test_warm_probe_failure_falls_back_to_official(self):
+        # FB_WARM_CACHE unset -> warm enabled. The fake store has no warm
+        # manifest, so the probe raises and the official path must install.
+        payload = self.archive(self.version)
+        with self.sources(payload, hashlib.sha256(payload).hexdigest()) as opened, \
+                contextlib.redirect_stderr(io.StringIO()):
+            env = {k: v for k, v in self.env.items() if k != 'FB_WARM_CACHE'}
+            location = sdk.ensure_flutter(self.version, env, self.cache)
+        self.assertEqual(location, self.cache / self.version)
+        self.assertEqual(opened.call_count, 3)  # warm probe + manifest + one archive
 
     def test_checksum_or_version_mismatch_never_publishes_sdk(self):
         for reported_version, verified, expected in ((self.version, False, 'SHA-256'), ('3.47.9', True, 'usable')):

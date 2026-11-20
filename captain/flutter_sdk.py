@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """Install/reuse an exact, verified Flutter SDK on Linux x86-64.
 
-Downloads only from the official Flutter release archive. No sudo, shell
-profiles, global Git configuration, credentials, or project files are changed.
+Downloads from the official Flutter release archive — or, when the warm cache
+is reachable and its sha256 matches, from Keshab's public, sha256-pinned
+`sdk-cache` GitHub release (built by flutter-bootstrap/pack.sh; official SDK
+files only, never credentials). Any warm-cache problem falls back to the
+official archive. No sudo, shell profiles, global Git configuration,
+credentials, or project files are changed. FB_WARM_CACHE=0 disables the warm
+path; FB_WARM_CACHE_BASE overrides the release base URL.
 """
 from __future__ import annotations
 
@@ -31,6 +36,8 @@ CHUNK_BYTES = 1024 * 1024
 MAX_STALLS = 5
 MAX_SEGMENTS = 32
 RETRYABLE_HTTP = frozenset({408, 429, 500, 502, 503, 504})
+WARM_BASE = 'https://github.com/Keshab1997/flutter-bootstrap/releases/download/sdk-cache'
+WARM_SEGMENTS = 6
 
 
 class SDKError(RuntimeError):
@@ -233,8 +240,109 @@ def download(url, filename, expected_sha):
         raise SDKError('Official Flutter archive did not match the manifest SHA-256. Nothing was installed.')
 
 
+def _warm_enabled(env):
+    return str(env.get('FB_WARM_CACHE', '1')) != '0'
+
+
+def _warm_base(env):
+    return str(env.get('FB_WARM_CACHE_BASE') or WARM_BASE).rstrip('/')
+
+
+def _warm_entry(version, env):
+    """Pinned warm-cache entry for `version`, or None. The probe goes through
+    the module-level urlopen so offline/mocked environments fail here cheaply
+    and the official path takes over."""
+    with urlopen(_warm_base(env) + '/cache-manifest.json', timeout=15) as stream:
+        manifest = json.loads(stream.read().decode('utf-8'))
+    entry = (manifest or {}).get('entries', {}).get(version)
+    if (isinstance(entry, dict) and isinstance(entry.get('asset'), str)
+            and re.fullmatch(r'[0-9a-f]{64}', str(entry.get('sha256', '')))
+            and isinstance(entry.get('bytes'), int) and entry['bytes'] > 0):
+        return entry
+    return None
+
+
+def _warm_download(url, target, expected_sha, size):
+    """Segmented download: GitHub's CDN throttles one sustained stream to
+    ~20-30 MB/s after its burst credit, while parallel ranges each get their
+    own bucket (~150+ MB/s aggregate on 6 segments, measured). True only when
+    the assembled file matches size and sha256."""
+    chunk = -(-size // WARM_SEGMENTS)
+    procs = []
+    for i in range(WARM_SEGMENTS):
+        start = i * chunk
+        if start >= size:
+            break
+        end = min(start + chunk, size) - 1
+        part = target.with_name(f'{target.name}.part{i}')
+        procs.append((part, subprocess.Popen(
+            ['curl', '-fsSL', '--retry', '3', '--retry-delay', '1', '--max-time', '900',
+             '-r', f'{start}-{end}', '-o', str(part), url],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)))
+    ok = bool(procs) and all(p.wait() == 0 for _, p in procs)
+    if ok:
+        with target.open('wb') as out:
+            for part, _ in procs:
+                with part.open('rb') as fh:
+                    shutil.copyfileobj(fh, out, 1024 * 1024)
+    for part, _ in procs:
+        part.unlink(missing_ok=True)
+    if not ok or target.stat().st_size != size:
+        target.unlink(missing_ok=True)
+        return False
+    sha = hashlib.sha256()
+    with target.open('rb') as fh:
+        while block := fh.read(1024 * 1024):
+            sha.update(block)
+    if sha.hexdigest() != expected_sha:
+        target.unlink(missing_ok=True)
+        return False
+    return True
+
+
+def _install_warm(version, root, cache, env):
+    """Install from the warm cache; True when `root` holds a verified SDK.
+    Every failure mode returns False so the caller can use the official
+    archive; `root` is only ever created by the final atomic rename."""
+    entry = _warm_entry(version, env)
+    if entry is None:
+        return False
+    if not (shutil.which('curl') and shutil.which('zstd')):
+        return False
+    started = time.time()
+    with tempfile.TemporaryDirectory(prefix='.warm-', dir=cache) as temp:
+        temp = Path(temp)
+        archive = temp / Path(entry['asset']).name
+        if not _warm_download(_warm_base(env) + '/' + entry['asset'],
+                              archive, entry['sha256'], entry['bytes']):
+            return False
+        decoder = subprocess.Popen(['zstd', '-dcq', str(archive)], stdout=subprocess.PIPE)
+        unpacker = subprocess.Popen(['tar', '-xf', '-', '-C', str(temp), '--no-same-owner'],
+                                    stdin=decoder.stdout, env=env)
+        if decoder.stdout:
+            decoder.stdout.close()
+        if unpacker.wait(timeout=600) != 0 or decoder.wait(timeout=60) != 0:
+            return False
+        archive.unlink(missing_ok=True)
+        dirs = sorted(p for p in temp.iterdir() if p.is_dir())
+        unpacked = temp / 'flutter' if (temp / 'flutter').is_dir() else (dirs[0] if len(dirs) == 1 else None)
+        if unpacked is None or unpacked.is_symlink() or installed_version(unpacked, env) != version:
+            return False
+        unpacked.rename(root)
+    print(f'Installed Flutter {version} from the warm cache in {time.time() - started:.0f}s.',
+          file=sys.stderr, flush=True)
+    return True
+
+
 def install(version, root, cache, env):
     # Extract and validate in private staging; never reuse a partial install.
+    if _warm_enabled(env):
+        try:
+            if _install_warm(version, root, cache, env):
+                return
+        except Exception as exc:  # any cache problem -> the official path
+            print(f'Warm cache unavailable ({exc.__class__.__name__}); using the official archive…',
+                  file=sys.stderr, flush=True)
     print(f'Installing Flutter {version} from the official archive (cold cache)…', file=sys.stderr, flush=True)
     url, digest = release(fetch_manifest(BASE_URL + 'releases_linux.json'), version)
     with tempfile.TemporaryDirectory(prefix='.install-', dir=cache) as temp:
