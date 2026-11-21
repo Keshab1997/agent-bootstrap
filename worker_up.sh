@@ -62,7 +62,13 @@ cat captain/FASTLANE.md
 
 echo
 echo "Worker boot done."
+echo "Default (repo attached in Arena): read docs/agent-briefs/.../BRIEF.md, edit allowed files,"
+echo "  python3 tool/preflight.py   (or the ONE test named in task.json)"
+echo "  git add -- <allowed> && git commit -m \"<task.json commit>\" && git push origin HEAD"
+echo "  report the AGENT <W> PUSHED block. The Captain runs CI; never push main or dispatch CI."
+echo
+echo "Option B (no repo attached):"
 echo "  1) fetch brief : python3 -B $DST/captain/worker_lane.py fetch-brief --url \"<BRIEF_URL>\""
 echo "  2) start task  : python3 -B $DST/captain/worker_lane.py start <task.json>"
 echo "  3) check/diff  : python3 -B $DST/captain/worker_lane.py check <task.json> && python3 -B $DST/captain/worker_lane.py diff <task.json>"
-echo "  4) push/report : python3 -B $DST/captain/worker_lane.py publish <task.json> && python3 -B $DST/captain/worker_lane.py mention <task.json> --brief-url \"<BRIEF_URL>\""
+echo "  4) push/report : python3 -B $DST/captain/worker_lane.py publish <task.json>"

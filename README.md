@@ -27,11 +27,12 @@ curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/set
 
 ## For AI agents — read this first
 
-Both Captains and Workers connect with **GitHub Device Flow** (`gh_app.py connect`)
-and reuse their saved workspace sessions across turns, tasks, and repos.
-(Optional Arena-attached mode: if a worker chat already has the target repo
-attached in Arena and the brief specifies `"arena"`, follow [Fast Lane](captain/FASTLANE.md)
-with `--checkout`.)
+**Default flow:** workers attach the target repo in Arena, the Captain sends one
+assignment message, the worker pushes its own `arena/*` branch, and the Captain
+runs CI and lands it. **Fallback:** both Captains and Workers can also connect
+with **GitHub Device Flow** (`gh_app.py connect`) and reuse their saved workspace
+sessions across turns, tasks, and repos (Option B — for chats without an
+attached repo; see [Fast Lane](captain/FASTLANE.md)).
 
 1. **Run** `python3 gh_app.py connect`. It first reuses a working token, then
    tries the saved refresh token if access expired. Successful recovery prints
@@ -82,37 +83,34 @@ No new PAT, private key, server or repository setting is needed for this update.
 
 ---
 
-## Multiple agents — GitHub briefs, Device-Flow workers
+## Multiple agents — attached repos, pushed branches, Captain-run CI
 
 Start the Captain with [`CAPTAIN_START_PROMPT.md`](CAPTAIN_START_PROMPT.md) (or `captain_up.sh`)
-and each Worker with [`captain/WORKER_START_PROMPT.md`](captain/WORKER_START_PROMPT.md) (or `worker_up.sh`).
-The Captain splits work by file into big, complete tasks (never micro-tasks),
-works its own lane in parallel, and [publishes each brief](captain/GITHUB_BRIEFS.md)
-as `BRIEF.md` and `task.json` under `docs/agent-briefs/<batch>/<task>/` on the
-**target repo's** `captain/briefs/<batch>` branch. Workers get only a short
-launch line with the repo and a commit-pinned link.
+and each Worker with [`captain/WORKER_START_PROMPT.md`](captain/WORKER_START_PROMPT.md).
 
-- **Device Flow (primary):** workers do **not** need an Arena repo attachment
-  and have no 1-PR limit. Each worker runs `worker_lane.py fetch-brief` to
-  download the brief, `start` → edit → `check` → `diff` → `publish` to push
-  `agent/<W>/<task>` (chaining with `base_sha`/`base_branch` when needed), and
-  `mention` to post `@Keshab1997` on the tracking issue. Once paired, a worker
-  chat stays reusable across tasks and repos.
-- **Optional Arena-attached mode:** if a chat already has the target repo
-  attached in Arena Agent Mode and the brief includes `"arena"`, pass
-  `--checkout` to `worker_lane.py` and keep its `arena/*` branch and linked PR
-  open until batch finalization.
-- The Captain reviews the exact `base → pushed SHA` range from a separate
-  checkout (`worker_lane.py review`) and integrates onto `main`.
+**The default flow is simple:**
 
-For apps using `flutter-builder`, workers and Captain use the target repo's
-installed preflight and pinned SDK (`worker_lane.py` handles this automatically).
-See the [Captain's builder rules](captain/CAPTAIN_PROMPT.md#how-to-use-flutter-builder).
+1. **Attach the target repo** in each worker chat (Arena UI).
+2. The Captain splits the work into big, file-disjoint tasks, publishes each
+   brief to `docs/agent-briefs/<batch>/<task>/` and pastes **one assignment
+   message** per worker (brief path, `task.json`, the commands).
+3. The worker edits only `allowed` files, runs **one cheap check**
+   (`tool/preflight.py`, or the single test in `task.json`), commits and pushes
+   **its own `arena/*` branch**, and reports `AGENT A PUSHED`.
+4. The Captain verifies `base..tip`, runs **CI on that branch**
+   (`captain/ci_dispatch.py <repo> --ref <branch> --logs`), fixes small reds
+   itself, lands green changes on `main`, and sends the next big task.
 
-**No brief copy/paste or app-file downloads/uploads between chats.** See the
-[Bengali walkthrough](captain/HOW_TO_START_BN.md).
+Workers never touch `main`, never open/merge/close PRs, never dispatch CI and
+never run builds or full suites locally — that is the Captain's job.
 
----
+**Option B — Device Flow** (`gh_app.py connect` + `worker_lane.py fetch-brief`)
+works for a worker chat with **no** attached repo: it pairs once, fetches a
+pinned brief, pushes `agent/<W>/<task>` and can mention `@Keshab1997`. Use one
+lane per task; never both.
+
+See the [Bengali walkthrough](captain/HOW_TO_START_BN.md),
+[Fast Lane](captain/FASTLANE.md) and [GitHub briefs](captain/GITHUB_BRIEFS.md).
 
 ## Starting a fresh agent — one paste
 

@@ -21,10 +21,11 @@ the workspace. For a Captain batch, refresh `agent-bootstrap` from `origin/main`
 without discarding local work. Use [GitHub briefs](captain/GITHUB_BRIEFS.md) and
 [Fast Lane](captain/FASTLANE.md): both Captain and Workers connect via Device
 Flow (`gh_app.py connect` / `captain/WORKER_START_PROMPT.md`), workers fetch the
-pinned brief via `worker_lane.py fetch-brief`, push tested checkpoints to
-`agent/<W>/<task>` (chaining with `base_sha`/`base_branch` when needed), and
-post `@Keshab1997` via `worker_lane.py mention`. (Optional Arena-attached
-`arena/*` chats remain supported when `"arena"` is in `task.json`.)
+**default lane:** attach the target repo in each worker chat, send one
+assignment message, let the worker push its own `arena/*` branch, then run CI on
+that branch (`ci_dispatch.py --ref`) and land it yourself. Device Flow
+(`fetch-brief` → `agent/<W>/<task>` → `mention`) is the Option B fallback for a
+chat with no attached repo.
 
 ## Check policy (agent pack v1.13.1) — do not backslide
 

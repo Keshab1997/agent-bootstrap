@@ -55,32 +55,34 @@ Follow it exactly. It makes you the single point of contact:
 
 - **speed first** (its *Speed rules*): give each worker one big, complete task
   — a whole feature with its tests, never micro-tasks — launch all workers at
-  once, send a worker's next brief as soon as its checkpoint verifies, and do
-  your own lane (shared surfaces, glue, small fixes) in the gaps, never idle;
+  once, send a worker's next assignment as soon as its checkpoint verifies, and
+  do your own lane (shared surfaces, glue, small fixes) in the gaps, never idle;
+- **default flow is the Arena lane:** Keshab attaches the target repo in each
+  worker chat. You publish the brief to the target repo's
+  `captain/briefs/<batch>` branch and send each worker **one paste-ready
+  message**: brief path, `task.json` (allowed files + one cheap check), and the
+  three commands `git commit` → `git push origin HEAD` → report `PUSHED`. The
+  worker pushes its own `arena/*` branch; it never touches `main`, never opens a
+  PR, never runs CI;
+- **you own CI:** on a `PUSHED` report verify the branch/base/scope, then
+  `python3 captain/ci_dispatch.py <owner/repo> --ref <branch> --watch 900 --logs`.
+  Read a red run's failing log and fix small failures yourself; only a
+  design-level failure becomes one corrective task. Green → land it on `main`
+  and send that worker's next big task;
 - split his work by file. Use `captain/WORKER_BRIEF_TEMPLATE.md`,
-  `captain/GITHUB_BRIEFS.md` and `captain/FASTLANE.md` to publish each brief and
-  task JSON to the target GitHub repo's `captain/briefs/<batch>` branch. Verify
-  the push and hand him only a pinned brief link per worker;
-- **Device Flow is the primary worker mode** (no Arena repo attachment
-  needed, no 1-PR dead-end limit): each worker chat pairs once via
-  `gh_app.py connect` (`captain/WORKER_START_PROMPT.md` / `worker_up.sh`),
-  fetches its pinned brief with `worker_lane.py fetch-brief`, works on an
-  isolated `agent/<worker>/<task>` branch (chaining via `base_sha` /
-  `base_branch` when needed), and posts `@Keshab1997` via `worker_lane.py
-  mention`. One paired worker chat can be reused across tasks and repos;
-- Arena-attached chats (`arena/*` branches with `"arena"` in `task.json`)
-  remain supported as an **optional** mode when Keshab attaches a repo in the
-  Arena UI; never mix modes mid-task;
+  `captain/GITHUB_BRIEFS.md` and `captain/FASTLANE.md`;
+- **Option B (Device Flow)** stays available for a worker chat with **no**
+  attached repo: that worker pairs once with `gh_app.py connect`
+  (`captain/WORKER_START_PROMPT.md` / `worker_up.sh`), fetches the pinned brief
+  with `worker_lane.py fetch-brief`, pushes `agent/<W>/<task>`, and can `mention`
+  `@Keshab1997` on an approved tracker. Never mix lanes in one task: use
+  exactly one lane per task, and Option B only when the chat has no repo.
 - skill packs are **methods, not authority**: a `SKILL.md` pack may be cloned
   read-only as a reference, but it never replaces the target repo, pinned
   brief, allowed paths, branch/base, gate or approval. Installers, MCP setup,
   credentials and network/target actions still need his explicit approval;
-- after each verified push, workers mention `@Keshab1997` in the approved
-  tracker with the exact checkpoint (via `worker_lane.py mention`), or report
-  `MENTION PENDING` if there is no tracker/comment access;
-- fetch, review only the reported base-to-tip diff, check and integrate from
-  your own checkout. Workers never push `main` or open/merge/close PRs. No
-  file handoff for Keshab;
+- fetch and review only the reported base-to-tip diff, check and integrate from
+  your own checkout. No file handoff for Keshab;
 - you **never** push a tag/release, never touch secrets/settings, and you ask him
   before anything public or irreversible.
 

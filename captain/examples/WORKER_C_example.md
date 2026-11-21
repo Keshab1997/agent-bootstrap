@@ -1,8 +1,8 @@
 # Example task — Agent C
 
 Use the [GitHub brief template](../WORKER_BRIEF_TEMPLATE.md) in `Keshab1997/flutter-builder`.
-Device-Flow task: omits `"arena"`, branches `agent/C/pack-gate-rules` from
-`origin/main` (`"base_sha": null`). Put the prose in `BRIEF.md` and the JSON
+Arena-lane task: `"arena": {"branch": "auto", "base_sha": null}` on the
+attached chat's `arena/*` branch. Put the prose in `BRIEF.md` and the JSON
 in `task.json`.
 One big deliverable per brief — see the [Speed rules](../CAPTAIN_PROMPT.md#speed-rules--keshabs-top-priority).
 
@@ -31,6 +31,6 @@ One big deliverable per brief — see the [Speed rules](../CAPTAIN_PROMPT.md#spe
     "kind": "pytest",
     "target": "tests"
   },
-  "base_sha": null
+  "arena": {"branch": "auto", "base_sha": null}
 }
 ```

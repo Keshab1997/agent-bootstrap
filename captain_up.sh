@@ -64,4 +64,4 @@ echo
 echo "Captain boot done."
 echo "  ledger : python3 captain/ledger.py show        (see captain/LEDGER.md)"
 echo "  batch  : python3 captain/batch_status.py       (ledger vs live GitHub refs)"
-echo "  CI     : python3 captain/ci_dispatch.py <owner/repo> --watch 900   (after 'batch ready')"
+echo "  CI     : python3 captain/ci_dispatch.py <owner/repo> --ref <branch> --watch 900 --logs   (per checkpoint, your job)"

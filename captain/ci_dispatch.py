@@ -2,14 +2,22 @@
 """Dispatch a repo's manual CI (workflow_dispatch) and optionally watch it.
 
 Keshab approved agent-side dispatch on 2026-11-20 (previously his button
-only). The rules around it did NOT change:
-  * never dispatch mid-task or before the local gate passed,
-  * only after the batch is landed and reported ("batch ready"),
+only). Default flow: the Captain dispatches ONE run on a worker's pushed branch
+to verify its checkpoint, reads a red run's failing log, and fixes small
+failures itself. Rules:
+  * dispatch only after the checkpoint report and the worker's cheap gate,
+  * never dispatch the same unchanged tree twice to fish for a pass,
   * a red run is read (failing job/log) before any fix,
   * workers still never dispatch CI — this tool is Captain/standalone-agent side.
 
     python3 captain/ci_dispatch.py owner/repo [--workflow NAME|ID|FILE]
-        [--ref main] [--watch SECONDS] [--input k=v]... [--dry-run]
+        [--ref BRANCH] [--watch SECONDS] [--logs] [--tail N]
+        [--input k=v]... [--dry-run]
+
+--ref accepts any branch (default main): pass the worker's arena/* or
+agent/<W>/<task> branch to verify that checkpoint before landing it.
+--logs prints the tail of each failed job's log, so a failing step can be read
+in the same call instead of a second API round trip.
 
 Workflow resolution: --workflow (numeric id | exact name | filename), else a
 workflow whose name contains "flutter ci", else flutter-ci.yml, else the
@@ -75,14 +83,51 @@ def resolve(repo: str, want: str | None) -> dict:
     raise SystemExit(f"ERROR: ambiguous — pick one with --workflow:\n{candidates(wfs)}")
 
 
+def failed_log(repo: str, job_id: int, tail: int = 40, fetch=None) -> str:
+    """Tail of a failed job's log, with the failing step first. Best-effort.
+
+    `fetch(path)` returns the raw text body for an API path (gh_app.py --raw);
+    it is injectable so this stays testable without network access.
+    """
+    fetch = fetch or raw_text
+    try:
+        raw = fetch(f"/repos/{repo}/actions/jobs/{job_id}/logs") or ""
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001 - a log must never break the report
+        return f"      (log unavailable: {exc.__class__.__name__})"
+    lines = raw.splitlines()
+    if not lines:
+        return "      (empty log)"
+    marks = [i for i, line in enumerate(lines)
+             if line.startswith("##[error]") or "Error:" in line or "FAILED" in line]
+    start = max(0, (marks[0] if marks else len(lines)) - 5)
+    chunk = lines[start:start + max(tail, 1)]
+    return "\n".join("      | " + line[:400] for line in chunk)
+
+
+def raw_text(path: str) -> str:
+    proc = subprocess.run([sys.executable, "-B", str(GH), "api", "GET", path, "--raw"],
+                          capture_output=True, text=True, timeout=90, cwd=str(BOOT))
+    if proc.returncode != 0:
+        detail = (proc.stderr or "").strip()[:200]
+        raise RuntimeError(detail or "permission or redirect")
+    return proc.stdout
+
+
 def main() -> int:
     p = argparse.ArgumentParser(prog="ci_dispatch.py", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("repo", help="owner/name, e.g. Keshab1997/docify")
     p.add_argument("--workflow", help="workflow id | exact name | filename (default: auto)")
-    p.add_argument("--ref", default="main", help="branch to run on (default main)")
+    p.add_argument("--ref", default="main",
+                   help="branch to run on: main or a worker's arena/*/agent/* checkpoint")
     p.add_argument("--watch", type=int, default=0, metavar="SECONDS",
                    help="poll until the run completes, up to SECONDS (0 = fire and forget)")
+    p.add_argument("--logs", action="store_true",
+                   help="print the tail of each failed job's log (needs --watch)")
+    p.add_argument("--tail", type=int, default=40, metavar="LINES",
+                   help="lines per failed job log with --logs (default 40)")
     p.add_argument("--input", action="append", default=[], metavar="K=V",
                    help="workflow_dispatch input (repeatable)")
     p.add_argument("--dry-run", action="store_true", help="resolve + print the POST, do not send")
@@ -135,9 +180,12 @@ def main() -> int:
             last = state
         if run["status"] == "completed":
             jobs = (api("GET", f"/repos/{args.repo}/actions/runs/{run['id']}/jobs") or {}).get("jobs", [])
-            for j in jobs:
-                if j.get("conclusion") not in (None, "success", "skipped", "neutral"):
-                    print(f"    FAILED job: {j.get('name')} -> {j.get('html_url')}")
+            failed = [j for j in jobs
+                      if j.get("conclusion") not in (None, "success", "skipped", "neutral")]
+            for j in failed:
+                print(f"    FAILED job: {j.get('name')} -> {j.get('html_url')}")
+                if args.logs:
+                    print(failed_log(args.repo, j["id"], args.tail))
             if run.get("conclusion") == "success":
                 print("CI green.")
                 return 0

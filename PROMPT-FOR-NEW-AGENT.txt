@@ -5,12 +5,16 @@ the point**: never wait on CI, never run a check the change does not need.
 
 ## 0. Check your role and current branch first
 
-If this is a Captain A/B/C assignment, use the pinned GitHub brief and current
-`captain/WORKER_START_PROMPT.md` / `captain/FASTLANE.md` from agent-bootstrap.
-**Device Flow is primary**: no Arena attachment or gh CLI is needed. Pair in
-this worker's own workspace, fetch-brief, then start the managed isolated clone.
-ONLY a task.json with `arena` uses its already-attached `arena/*` checkout.
-Never mix modes mid-task. Do not follow independent direct-to-main setup below.
+If this is a Captain A/B/C assignment, read
+`captain/WORKER_START_PROMPT.md` and `captain/FASTLANE.md` from agent-bootstrap.
+**The default lane is the attached repo**: Keshab attaches the target repo in
+this chat, the Captain's message names the brief in `docs/agent-briefs/`, and
+you edit `allowed` files, run one cheap check, and push **your own `arena/*`
+branch**, then report the `PUSHED` block. The Captain runs CI and fixes reds —
+you never dispatch CI or open/merge a PR. Option B (Device Flow `gh_app.py
+connect` + `worker_lane.py fetch-brief`, `agent/<W>/<task>`) is only for a chat
+with no attached repo. Never mix lanes mid-task, and do not follow the
+independent direct-to-main setup below for a Captain task.
 
 Read `captain/SPEED_POLICY.md`: one pinned worker gate, no extra test battery.
 Flutter tests: fail fast, 30s per test, 120s wall. Timeout → BLOCKED; at most two
@@ -21,8 +25,9 @@ after PUSHED, or report MENTION PENDING. Workers never open/merge/close PRs.
 
 ## 1. Restore GitHub access — approve only when recovery is not possible
 
-Skip this pairing setup if the task can use the workspace’s existing Git access.
-Device-Flow workers use their own saved session; optional Arena tasks use native access.
+**Skip this whole section for the default lane** — an attached repo already has Git
+access. Pair here only for Option B (an unattached chat) or for standalone work
+outside a Captain task.
 
 ```bash
 DST=/home/user/agent-bootstrap   # keep the session in this workspace between turns
@@ -137,7 +142,6 @@ the failing log first**, then fix. Captain workers still never dispatch CI.
 ## 8. "Done" looks like
 
 Small focused commits on the authorized branch with local SHA == remote SHA;
-checks matched to the change; manual CI only if Keshab dispatches it. A Captain
-worker reports the verified `PUSHED` block and pinned brief link on the
-approved tracker, or uses `MENTION PENDING` in Arena if unable to comment.
+checks matched to the change. A Captain worker pushes its `arena/*` branch and
+reports the verified `PUSHED` block in chat (the Captain runs CI and lands it).
 When code has not pushed, report `BLOCKED` with the reason, not done.

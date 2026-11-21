@@ -58,17 +58,32 @@ python3 /home/user/agent-bootstrap/device_pair.py poll 60
 `TIMEOUT for this turn` মানে ৬০ সেকেন্ডের অপেক্ষা শেষ, code শেষ নয়। একই command
 আবার চলবে। সত্যিই `EXPIRED` হলে `gh_app.py connect` নতুন code নিতে পারে।
 
-## Workers: Device Flow + GitHub brief (repo attach ছাড়াই)
+## Workers: repo attach → Captain বলে দেয় → worker push করে → Captain CI চালায়
 
-Captain কাজের repo-তে [brief ও task JSON push](captain/GITHUB_BRIEFS.md) করবে।
-Worker chat-এ শুধু [`captain/WORKER_START_PROMPT.md`](captain/WORKER_START_PROMPT.md)
-(বা `worker_up.sh`) ও Captain-এর এক লাইনের pinned link দিন — Arena UI-তে
-repo attach করার দরকার নেই। Worker নিজেই Device Flow-তে (`gh_app.py connect`)
-কানেক্ট হয়ে `worker_lane.py fetch-brief` দিয়ে brief নামাবে, `agent/<W>/<task>`
-branch-এ checkpoint push করবে, এবং `worker_lane.py mention` দিয়ে `@Keshab1997`
-মেনশন করবে। একবার paired হলে ওই একই Worker chat একাধিক task ও repo-তে চলবে।
-(Optional: কোনো chat-এ আগে থেকেই Arena repo attach থাকলে `"arena"` brief দিয়েও
-কাজ চালানো যাবে।) [ধাপে ধাপে ব্যবহার](captain/HOW_TO_START_BN.md)।
+এটাই এখন **সাধারণ/ডিফল্ট** নিয়ম — আর কিছু মনে রাখতে হবে না:
+
+1. **worker chat খোলার সময় target repo attach করে দিন** (Arena UI-তে)।
+2. Captain-এর পাঠানো **এক message** paste করুন — সেটাতেই brief-এর path,
+   `task.json` (allowed file + একটাই check) আর ঠিক কী command চালাতে হবে লেখা
+   থাকে।
+3. Worker শুধু তার `allowed` file edit করে, একটাই cheap check চালায়
+   (`python3 tool/preflight.py` বা `task.json`-এর একটাই test), commit করে
+   **নিজের `arena/*` branch** push করে, আর chat-এ `AGENT A PUSHED` block দেয়।
+4. **Captain** GitHub থেকে branch এনে diff দেখে, `captain/ci_dispatch.py … --ref
+   <branch> --logs` দিয়ে **CI চালায়**; লাল হলে log পড়ে ছোট ভুল নিজেই ঠিক করে
+   `main`-এ land করে। সবুজ হলে সঙ্গে সঙ্গে পরের বড় কাজ দেয়।
+
+Worker কখনো `main`-এ push করে না, PR খোলে না, CI চালায় না, build/full suite
+চালায় না। Device Flow (`gh_app.py connect` + `worker_lane.py fetch-brief`) এখন
+শুধু **ব্যাকআপ** — যে chat-এ repo attach করা নেই, কেবল সেখানে।
+
+```text
+repo attach → Captain-এর এক message → worker নিজের arena/* branch push
+      ↑                                          ↓
+      └──── Captain: diff review + CI + red fix + main-এ land ────┘
+```
+
+বিস্তারিত: [Fast Lane](captain/FASTLANE.md) · [Worker starter](captain/WORKER_START_PROMPT.md) · [ধাপে ধাপে](captain/HOW_TO_START_BN.md)
 
 ## Authenticator-এর GitHub code দিলে কি হবে?
 
@@ -112,7 +127,7 @@ python3 selftest.py                    # fake token দিয়ে offline regr
 | Refresh token | সাধারণত ১৮১ দিনের মেয়াদ; ব্যবহারে rotate হয়, নতুনটি সেভ হয় |
 | একই workspace-এর পরের turn | সেভ করা session/pending code reuse হয় |
 | একদম নতুন Captain workspace | পুরোনো credential নেই — প্রথম approval এখনও দরকার |
-| একই repo-linked worker chat-এর পরের batch | Arena access ও যাচাই করা branch tip reuse; নতুন pinned brief |
+| একই repo-attached worker chat-এর পরের batch | সেই chat ও branch-ই আবার ব্যবহার হয়; Captain শুধু নতুন assignment message দেয় |
 | Revoked/expired refresh বা হারানো credential | আবার approval লাগতে পারে |
 
 **শুধু public repo দিয়ে সব নতুন workspace-কে গোপনে write access দেওয়া নিরাপদ নয়।**

@@ -9,35 +9,36 @@ scope, approvals, secrets or a failed gate. Existing pinned task specs remain
 binding; Captain must explicitly supersede them, not silently drop acceptance.
 
 
-You own scope, brief publishing, review, and integration into the working
-repo's `main`. Worker agents (A, B, C) each get one **big, self-contained
-task** at a time while you work your own lane ([Speed rules](#speed-rules--keshabs-top-priority)).
-**Device Flow (`gh_app.py connect`) is the primary worker mode:** each worker
-chat connects via Device Flow (`captain/WORKER_START_PROMPT.md` / `worker_up.sh`),
-fetches a pinned GitHub brief with `worker_lane.py fetch-brief`, works in an
-isolated clone, pushes one tested **checkpoint** to `agent/<W>/<task>`, and
-posts `@Keshab1997` with `worker_lane.py mention`. No Arena repo attachment is
-required, and there is no 1-PR limit.
-Workers never push `main`, modify briefs, open/merge/close PRs, tag, dispatch
-CI, or share secrets.
+You own scope, the assignment message, review, **CI**, and integration into the
+working repo's `main`. Worker agents (A, B, C) each get one **big,
+self-contained task** at a time while you work your own lane
+([Speed rules](#speed-rules--keshabs-top-priority)).
 
-Use [GitHub briefs](GITHUB_BRIEFS.md) and [Worker Fast Lane](FASTLANE.md).
-(Optional Arena-attached mode: if a worker chat already has the target repo
-attached in Arena Agent Mode and the brief specifies `"arena"`, it uses its
-`arena/*` branch and never opens/merges/closes its linked PR until batch
-finalize.)
+**Default lane — Arena-attached workers.** Keshab attaches the target repo in
+each worker chat; you hand that chat ONE self-contained assignment message
+(brief + task.json + exactly what to do) and the worker edits `allowed` files,
+runs the cheap check, commits and pushes **its own `arena/*` branch**. It never
+touches `main`, never dispatches CI, never opens a PR. You fetch the branch,
+review the diff, **run CI on that branch**, fix small reds yourself, and land
+the reviewed change. No Device Flow pairing, no `fetch-brief`, no state machine.
 
 ```text
-Keshab → Captain → pinned GitHub docs → Device-Flow workers (agent/*)
-          ↑                               ↓
-          └── verified GitHub checkpoint + approved tracker mention
-          → review task range → integration gate → authorized landing
+Keshab attaches repo → Captain sends one assignment message → Worker pushes arena/* branch
+        ↑                                                              ↓
+        └── landed main ← CI green ← Captain reviews, runs CI, fixes reds
 ```
 
-Keep live worker chats across tasks and repos — once paired via Device Flow,
-a worker chat stays ready without re-pairing. Work already in flight keeps its
-original brief, auth, branch and base. Keshab forwards one launch link per
-worker, not the brief or any files.
+**Option B — Device Flow** (`gh_app.py connect`, `worker_lane.py`) stays
+supported for a worker chat with **no** attached repo: pair once, fetch a pinned
+brief, push `agent/<W>/<task>`. Use it only when Keshab says the chat is
+unattached; never mix the two lanes in one task.
+
+Workers never push `main`, modify briefs, open/merge/close PRs, tag, dispatch
+CI, or share secrets. Keshab forwards a message and a `PUSHED` report — never
+files, tokens or the whole brief by hand.
+
+Use [Worker starter](WORKER_START_PROMPT.md), [GitHub briefs](GITHUB_BRIEFS.md)
+and [Worker Fast Lane](FASTLANE.md).
 
 ---
 
@@ -59,22 +60,23 @@ tasks, not typing speed, decides how long a project takes.
    next big task drafted before its check-in arrives.
 3. **Launch all at once.** A worker branch never receives later `main`
    updates, so land blocking shared-surface prerequisites (dependency, route,
-   interface stub) yourself first, or split so no worker needs them. Then
-   publish every brief in one docs commit and give Keshab all launch lines in
-   one message.
-4. **Work in the gaps, never idle.** Right after posting the launch lines,
-   keep going in the same turn on your own lane: shared surfaces, integration
-   glue, small fixes and any file-disjoint slice no worker owns (land it via
-   §2d). Never edit a file a live worker owns. Pre-warm the gate (SDK,
-   `pub get`) and draft the next briefs. Don't end a turn just to wait.
-5. **Next task first, deep review second.** On a check-in run the fast
-   `worker_lane.py review` (exact tip, base, scope, credential patterns), then
-   immediately publish that worker's next big brief with the verified SHA as
-   `base_sha` and send its launch line. Do the full diff review, gate and
-   integration while the worker is busy; a problem found later becomes a
-   corrective task. Review first only if the next task builds on a risky change.
-6. **Integrate continuously.** Land each checkpoint as soon as it passes the
-   gate; don't wait for the rest of the batch.
+   interface stub) yourself first, or split so no worker needs them. Publish
+   every brief in one docs commit, then give Keshab one paste-ready assignment
+   message per worker in a single reply.
+4. **Work in the gaps, never idle.** Right after sending those messages, keep
+   going in the same turn on your own lane: shared surfaces, integration glue,
+   small fixes and any file-disjoint slice no worker owns (land it via §2d).
+   Never edit a file a live worker owns. Pre-warm the gate (SDK, `pub get`) and
+   draft the next briefs. Don't end a turn just to wait.
+5. **Next task first, deep review second.** On a `PUSHED` report verify the
+   exact tip/base/scope fast (§2c), then immediately send that worker's next big
+   assignment with the verified SHA as `base_sha` (an unmerged `arena/*` branch
+   is a fine base when the repo is attached). Review the diff and run CI while
+   the worker is busy; a problem found later becomes one corrective task.
+6. **You run CI, and you fix the red.** Dispatch on the worker's branch after
+   the fast verify; read the failing log and repair small failures yourself
+   instead of relaying them. Land each checkpoint as soon as CI is green —
+   don't wait for the rest of the batch.
 7. **Don't ask what you can decide.** Questions to Keshab are only for the
    approval gates in §4.
 
@@ -101,10 +103,11 @@ restore the known `origin` if missing and fast-forward only (`git pull --ff-only
 If local changes prevent it, read current docs from a separate clean clone;
 never reset work, move credentials, or reuse a stale brief.
 
-Clone the working repo once for review and keep it under `/home/user/<repo>`.
-If your own Arena checkout is bound to a worker branch, use a separate Captain
-checkout for `main` rather than changing the Arena binding. Prepare brief
-commits in a separate docs worktree so your integration checkout stays clean.
+Clone the working repo once for review, CI dispatch and integration; keep it
+under `/home/user/<repo>`. If your own Arena checkout is bound to a worker
+branch, use a separate Captain checkout for `main` rather than changing the
+Arena binding. Prepare brief commits in a separate docs worktree so your
+integration checkout stays clean.
 
 ```bash
 git clone https://github.com/Keshab1997/<repo>.git /home/user/<repo>
@@ -114,6 +117,9 @@ git config user.name "Keshab Sarkar"
 git config user.email "Keshab1997@users.noreply.github.com"
 git config credential.helper '!f(){ echo username=x-access-token; echo "password=$(cat /home/user/agent-bootstrap/secrets/gh_token.txt)"; }; f'
 ```
+
+**Also look at the repo's CI workflow once** (`ls .github/workflows/`), and know
+how to run it on a branch: `python3 captain/ci_dispatch.py <owner/repo> --ref <branch> --watch 900`.
 
 ---
 
@@ -180,85 +186,81 @@ and follow the relevant `SKILL.md` while you analyse or prepare a task.
 7. **Tiny item?** Don't brief it. Do it yourself, or fold it into the next big
    brief for that area.
 
-### 2b. Publish one GitHub brief per checkpoint
+### 2b. Publish one brief, then send ONE assignment message
 
 Use the current [brief template](WORKER_BRIEF_TEMPLATE.md). Freeze the exact
-allowed paths, goal, acceptance, interface, gate, optional approved tracker,
-and base commit when needed. Use the target repo's actual SDK/test profile, not
-an example pin. Do not assign the brief files as part of the worker's scope.
+allowed paths, goal, acceptance, interface, gate and base commit when needed.
+Use the target repo's actual SDK/test profile, not an example pin. Do not
+assign the brief files as part of the worker's scope.
 
-- **Device Flow task (default):** omit `"arena"`. Leave `"base_sha"` `null` (or
-  omit) to branch `agent/<W>/<task>` from current `origin/main`, or set
-  `"base_sha"` (and `"base_branch"` if unmerged, e.g. `"agent/<W>/<prev>"`)
-  to stack on a prior verified checkpoint right after Speed rule 5 verification.
-  Include `"tracker"` when an approved same-repo issue exists so the worker can
-  run `worker_lane.py mention`.
-- **Optional Arena-linked task:** include `"arena": {"branch": "...", "base_sha": ...}`
-  only when using a repo-attached Arena chat; never mix modes mid-task.
-- **In flight already:** preserve its original brief, branch and gate. For
-  pre-Fast-Lane work use the [original manual handoff](LEGACY_WORKER_BRIEF.md).
-  Do not rerun `start` over edits or migrate a task mid-run.
+Commit `BRIEF.md` and `task.json` in the **target repo** on
+`captain/briefs/<batch>` following
+[the publish steps](GITHUB_BRIEFS.md#1-captain-publish-the-brief-before-assigning-it)
+and verify the remote SHA. Do not paste the full brief into the chat, put
+private project work in public bootstrap docs, or merge the docs branch into
+`main`.
 
-Commit `BRIEF.md` and `task.json` in the **target repo** on `captain/briefs/<batch>`
-following [the publish steps](GITHUB_BRIEFS.md#1-captain-publish-the-brief-before-assigning-it).
-Verify the remote SHA before sending the one-line `BRIEF.md` launch link. Do
-not paste the full brief, use a mutable link, put private project work in
-public bootstrap docs, or merge the docs branch into `main`. Keep one live
-assignment per worker and non-overlapping file sets.
+- **Arena lane (default):** include `"arena": {"branch": "auto", "base_sha": null}`
+  for a fresh task from `main`, or `"base_sha": "<verified arena tip>"` with the
+  same `"branch": "auto"` when the next task stacks on that worker's unmerged
+  branch. The worker stays on the branch Arena gave it.
+- **Option B (unattached chat):** omit `"arena"`; use `"base_sha"` /
+  `"base_branch"` when chaining onto an unmerged `agent/<W>/…` checkpoint.
+- **In flight already:** preserve its original brief, lane, branch and gate.
+  For pre-Fast-Lane work use the [manual handoff](LEGACY_WORKER_BRIEF.md). Do
+  not migrate a task mid-run.
 
-### 2c. Fetch and review only the reported task range
+Then send each worker **one copy-paste message** — the brief path, the task
+JSON, and the exact commands, using this skeleton:
 
-On check-in, read the brief's approved tracking issue for the worker's
-`@Keshab1997` mention and full `PUSHED` block. If commenting was unavailable,
-use the report and commit link from the worker chat, verify the checkpoint,
-then post the missing mention only if the tracker and publication are
-approved. No chat-to-chat delivery or automated polling is assumed.
+```text
+You are Worker A on Keshab1997/<repo> (brief: docs/agent-briefs/<batch>/<task>/BRIEF.md,
+spec: …/task.json). Read captain/WORKER_START_PROMPT.md and BRIEF.md.
+Edit ONLY the allowed paths. Run python3 tool/preflight.py (or the ONE test in
+task.json). Then: git add -- <allowed> && git commit -m "<commit>" && git push origin HEAD
+(on your existing arena/* branch — never main). Reply with the AGENT A PUSHED block.
+Do not run CI, open a PR, or edit task.json.
+```
 
-Use the actual branch, `base_sha` and pushed `sha` from the report, plus the
-original task JSON at the ledger's pinned docs commit. `BLOCKED` isn't a
-handoff. Record the brief and each checkpoint in the
-[Fast Lane ledger](FASTLANE.md#3-captain-verify-review-then-assign-the-next-task) —
-one command each: `python3 captain/ledger.py upsert …` at assignment and
-`checkpoint …` on verify/land (machine-readable `captain/LEDGER.json`, see
-[LEDGER.md](LEDGER.md)); `python3 captain/batch_status.py` shows every live
-GitHub tip vs. the ledger, mentions and CI runs in one call.
-For Fast Lane use `worker_lane.py review` from the separate Captain checkout
-to verify the remote tip, parent and scope before reading the diff. Ask for
-missing report fields; don't guess a branch or base. No file handoff.
+Keep one live assignment per worker and non-overlapping file sets.
 
-For **legacy/manual reports**, use the fetch/review block below. The worker
-may have more than one commit for the current task.
+### 2c. Verify the reported range, then run CI
 
-Set `branch`, `base`, and `tip` to those reported values (full commit SHAs for
-`base` and `tip`). From a verified repo checkout:
+On a `PUSHED` report use the actual branch, base and pushed `sha` from the
+report, plus the frozen `task.json`. `BLOCKED` is not a handoff — answer with
+the fix or take the work yourself.
 
 ```bash
 set -eu
 case "$branch" in arena/?*|agent/[ABC]/?*) ;; *) exit 1 ;; esac
-git check-ref-format "refs/heads/$branch"
 git fetch origin "refs/heads/$branch:refs/remotes/origin/$branch"
-test "$(git rev-parse --verify "refs/remotes/origin/$branch^{commit}")" = "$tip"
-git merge-base --is-ancestor "$base" "$tip"
+test "$(git rev-parse "refs/remotes/origin/$branch^{commit}")" = "$tip"
 git log --oneline "$base..$tip"
-git diff --name-status "$base" "$tip"
+git diff --name-status "$base" "$tip"      # must equal the allowed list
 git diff --no-ext-diff --no-textconv "$base" "$tip" --
 ```
 
-If the branch is missing, its tip moved, or the base is wrong, reconcile the
-report before reviewing. On a reused Arena branch `main...branch` can include
-older squashed work: review only this task's `base_sha` → pushed `sha` delta.
+Check in this order, stop at the first failure: **scope** (only `allowed`
+files), **secrets** (no tokens/keystores/`google-services.json`), **scope
+creep** (no version bumps or whole-file reformatting), **coherence**, then CI.
 
-Review checklist, in this order (stop at the first failure):
+Dispatch CI on that branch (a push alone does not run it):
 
-1. **Scope:** diff touches only the files the brief allowed. Anything else → send
-   it back or revert that hunk; do not "keep it anyway".
-2. **Secrets:** no tokens, `*.jks`, `*.keystore`, `key.properties`,
-   `google-services.json`. If one appears, stop and tell Keshab without quoting it.
-3. **Scope creep:** version bumps, reformatting whole files, renamed public APIs,
-   dependency additions → not in the brief → strip or bounce.
-4. **Coherence:** the change actually does what the brief asked, and reads like
-   the rest of the file (comments explain *why*, same naming, same style).
-5. **The gate** (§3). Only after this do you integrate.
+```bash
+python3 captain/ci_dispatch.py <owner/repo> --ref "$branch" --watch 900
+```
+
+Run long watches as a background process and keep working. **Red run:** read
+the first failing step/log yourself, then fix it — a small failure is your own
+job in the integration commit; only a design-level failure becomes one
+corrective task (new task ID, exact failing step and log in it). Never call a
+pending or red run green, and never re-dispatch an unchanged tree.
+
+Record the assignment and each checkpoint in the ledger —
+`python3 captain/ledger.py upsert …` at assignment, `checkpoint …` on
+verify/land ([LEDGER.md](LEDGER.md)). `python3 captain/batch_status.py` shows
+every live tip vs. the ledger, mentions and CI runs in one call — the fastest
+answer to “কী হলো”. Ask for missing report fields; don't guess a branch or base.
 
 ### 2d. Integrate — one reviewed workstream at a time
 
@@ -279,6 +281,7 @@ git diff --cached --check
 git diff --cached
 python3 tool/preflight.py               # REPLACE with this repo's actual gate, §3
 # Commit only after reviewing the staged diff and passing the gate.
+# A CI failure you already fixed by hand belongs in this same commit.
 git commit -m "fix(scope): reviewed worker change"
 ```
 
@@ -300,17 +303,16 @@ not delete a standalone branch automatically either.
 ### 2e. Report to Keshab (his format, every time)
 
 ```
-Batch <n>: A merged (<sha7>), B merged (<sha7>), C pending — <why>; Captain landed (<sha7>)
-Changed: <one line per merged workstream, your own lane included>
-Evidence: pytest 256 passed / preflight ok / diff scope clean
+Batch <n>: A landed (<sha7>, CI green), B pending (push due), C landed (<sha7>); Captain landed (<sha7>)
+Changed: <one line per landed workstream, your own lane included>
+Evidence: preflight ok / <one test> passed / CI run <id> green / diff scope clean
 Not touched: <what you deliberately left alone>
 Next: <big tasks already out / what remains of the project>
 ```
 
-After the report, dispatch the batch's CI yourself (Keshab-approved
-2026-11-20): `python3 captain/ci_dispatch.py <owner/repo> --watch 900` —
-run long watches in a background process and keep integrating meanwhile.
-Red run: read the failing log first, fix, land, re-dispatch.
+CI for each checkpoint on its own branch is yours (Keshab-approved
+2026-11-20). Red run: read the failing log, fix, land, re-dispatch — never
+leave a red run unreported.
 
 ### 2f. Finalize the batch, not the task
 
@@ -320,8 +322,8 @@ landed and pending. Prefer a Captain-owned PR with only the remaining reviewed
 changes if the repo needs a PR. A linked worker PR is terminal: before using
 it, verify its **entire** PR diff and make sure no worker edits need saving.
 Never close or merge one while that chat still has work. If a new chat is
-needed, tell Keshab to attach the target repo in the new chat and give him the
-[new pinned brief link](FASTLANE.md#4-finalize-only-when-explicitly-asked).
+needed, tell Keshab to attach the target repo in the new chat and send him the
+new one-line assignment message ([Fast Lane](FASTLANE.md#2-captain-per-checkpoint)).
 
 ---
 
@@ -329,13 +331,18 @@ needed, tell Keshab to attach the target repo in the new chat and give him the
 
 Run **the repository's own rule**, nothing more:
 
-| Repo type | Gate | Cheap? |
+| Repo type | Worker's cheap gate | Captain |
 |---|---|---|
-| Flutter app repo with `tool/preflight.py` | `python3 tool/preflight.py` | ~1 s |
-| Dart edit in such a repo | Exact SDK + locked pub get + preflight + ONE matching test; reuse verified worker evidence and check integration risk, not every suite | reusable warm cache; bounded targeted tests |
-| `flutter-builder` itself | `python3 -m pytest tests/ -q` | ~6 s |
-| `agent-bootstrap` auth changes | `python3 selftest.py` (offline, fake credentials) | seconds |
-| concrete cross-module risk or Keshab explicitly asks | justified `flutter analyze` / full `flutter test` only; not automatic for whitespace/shared filenames | minutes — explain the risk first |
+| Flutter app repo with `tool/preflight.py` | `python3 tool/preflight.py` (~1 s) | CI on the worker branch |
+| Dart edit in such a repo | preflight + ONE matching test | CI; reuse verified evidence, check risk not every suite |
+| `flutter-builder` itself | `python3 -m pytest tests/ -q` (~6 s) | CI on the branch |
+| `agent-bootstrap` changes | `python3 selftest.py` (offline) | `python3 selftest.py` before landing |
+| concrete cross-module risk or Keshab asks | justified `flutter analyze` / full `flutter test` | same, after explaining the risk |
+
+**The real gate is CI, not the worker.** Workers only prove the code imports and
+their one test passes; everything slower or broader belongs to the CI run you
+dispatch on their branch. That is why they never run builds, full suites or
+screenshots locally.
 
 ### How to use `flutter-builder`
 
@@ -355,7 +362,7 @@ Run **the repository's own rule**, nothing more:
   an older `AGENTS.md` to push `main` or run `tool/agent_loop.py` are for
   independent work, not Captain workers. CI remains Keshab's decision.
 
-Never `flutter build`, never `gradlew`, never wait for CI.
+Never `flutter build`, never `gradlew`. Dispatching CI is your job; waiting idle on it is not — hand out the next task while it runs.
 
 **Why workers still run the cheap gate:** if they push code that does
 not even import, you spend your (single) thread fixing their typos instead of

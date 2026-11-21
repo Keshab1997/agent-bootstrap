@@ -1,9 +1,10 @@
 # Example task — Agent A
 
 Use the [GitHub brief template](../WORKER_BRIEF_TEMPLATE.md) in `Keshab1997/docify`.
-Device-Flow task: omits `"arena"`, branches `agent/A/home-screen-complete`
-from `origin/main` (`"base_sha": null`), and posts `@Keshab1997` to `"tracker"`
-after push. Put the prose in `BRIEF.md` and the JSON in `task.json`.
+Arena-lane task: `"arena": {"branch": "auto", "base_sha": null}` — the worker
+stays on the `arena/*` branch of its attached chat, edits only `allowed`, runs
+the one test, and pushes. The Captain dispatches CI on that branch afterwards.
+Put the prose in `BRIEF.md` and the JSON in `task.json`.
 Use a confirmed compatible Flutter pin; this version is illustrative.
 One big deliverable per brief — see the [Speed rules](../CAPTAIN_PROMPT.md#speed-rules--keshabs-top-priority).
 
@@ -36,6 +37,6 @@ One big deliverable per brief — see the [Speed rules](../CAPTAIN_PROMPT.md#spe
     "version": "3.50.0",
     "test": "test/home_screen_test.dart"
   },
-  "base_sha": null
+  "arena": {"branch": "auto", "base_sha": null}
 }
 ```

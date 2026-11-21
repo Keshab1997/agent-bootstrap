@@ -16,6 +16,7 @@ import unittest
 from unittest import mock
 
 import audit_fleet as audit
+import ci_dispatch
 import flutter_sdk as sdk
 import worker_lane as work
 
@@ -1004,3 +1005,57 @@ class DeviceFlowOrchestrationTests(unittest.TestCase):
         self.assertFalse(created2)
         self.assertEqual(url1, url2)
         self.assertEqual(len(posted), 1)
+
+
+class CiLogTests(unittest.TestCase):
+    """The Captain reads a red run's log in the same call; no second round trip."""
+
+    def fake_fetch(self, lines):
+        return lambda path: '\n'.join(lines) + '\n'
+
+    def test_failed_log_shows_the_failing_step_and_context(self):
+        ci = ci_dispatch
+        lines = ['##[group]Run flutter test', 'flutter test'] + \
+                [f'ok line {i}' for i in range(30)] + \
+                ['##[error]Process completed with exit code 1.', 'test failed: home_screen_test.dart']
+        out = ci.failed_log('Keshab1997/fixture', 42, tail=8, fetch=self.fake_fetch(lines))
+        self.assertIn('##[error]Process completed with exit code 1.', out)
+        self.assertIn('test failed: home_screen_test.dart', out)
+        self.assertTrue(all(line.startswith('      | ') or line == '' for line in out.splitlines()))
+
+    def test_failed_log_is_bounded_and_never_raises(self):
+        ci = ci_dispatch
+        out = ci.failed_log('Keshab1997/fixture', 42, tail=3, fetch=self.fake_fetch(['a', 'b', 'c', 'd', 'e']))
+        self.assertEqual(len(out.splitlines()), 3)
+        def boom(path):
+            raise RuntimeError('no permission')
+        self.assertIn('log unavailable', ci.failed_log('Keshab1997/fixture', 42, fetch=boom))
+        self.assertIn('empty log', ci.failed_log('Keshab1997/fixture', 42, fetch=lambda path: ''))
+
+
+class AttachedLaneSpecTests(unittest.TestCase):
+    """The card / lane documents must describe the attached-repo default lane."""
+
+    docs = Path(__file__).parent
+
+    def test_fast_lane_states_the_attached_default_and_captain_ci(self):
+        text = (self.docs / 'FASTLANE.md').read_text()
+        for needle in ('## The default flow (Lane A — Arena-attached)',
+                       'git push origin HEAD', 'AGENT <W> PUSHED',
+                       '--ref <arena/...> --watch 900', 'Option B — Device Flow'):
+            self.assertIn(needle, text)
+        # The worker must never be told to run CI or build locally.
+        self.assertIn('Workers CI কখনো dispatch করে না', text)
+
+    def test_worker_starter_has_no_pairing_on_the_default_path(self):
+        text = (self.docs / 'WORKER_START_PROMPT.md').read_text()
+        default = text.split('## Option B')[0]
+        self.assertNotIn('gh_app.py connect', default)
+        self.assertNotIn('fetch-brief', default)
+        self.assertIn('git push origin HEAD', default)
+        self.assertIn('Never `flutter analyze`, full `flutter test`', default)
+
+    def test_examples_use_the_attached_lane(self):
+        for path in sorted(self.docs.glob('examples/WORKER_*.md')):
+            spec = work.validate_task(json.loads(re.search(r'```json\n(.*?)\n```', path.read_text(), re.S).group(1)))
+            self.assertEqual(spec['arena'], {'branch': 'auto', 'base_sha': None}, path.name)

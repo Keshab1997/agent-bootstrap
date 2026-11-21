@@ -1,10 +1,10 @@
-# Captain worker brief — GitHub Fast Lane
+# Captain worker brief — Arena lane (default) / Device Flow (Option B)
 
 For each new task publish both files below at
 `docs/agent-briefs/<batch>/<task>/` on the target repo's `captain/briefs/<batch>`
-branch. Use the same task ID in the path and JSON. Share only the one-line
-launch link after verifying the push. See [GitHub briefs](GITHUB_BRIEFS.md) for
-the exact handoff and reporting steps.
+branch, then send the worker ONE copy-paste assignment message. Use the same
+task ID in the path and JSON. See [GitHub briefs](GITHUB_BRIEFS.md) for the exact
+handoff and reporting steps.
 
 ## `BRIEF.md`
 
@@ -20,24 +20,48 @@ the exact handoff and reporting steps.
 3. {{…as many as the deliverable needs}}
 
 **Interface / exclusions:** {{exact contracts to keep; what you must not change}}
+**Branch:** stay on the `arena/*` branch this chat is bound to — never `main`,
+never a new branch.
 **Scope and gate:** See [task.json](task.json) at this same commit. Do not edit it.
-Run ONLY that gate; no extra suites/analyze/screenshots unless explicitly required
-here for a concrete risk. Prefer an existing matching test file, adding focused
-regressions only as needed. Flutter: fail-fast, 30s/test, 120s wall. Timeout →
-BLOCKED; two unsuccessful corrective attempts → stop and report exact error,
-changed files and remaining acceptance. Never bypass a failed gate.
+Edit ONLY its `allowed` paths. Run ONE cheap local check —
+`python3 tool/preflight.py`, or the single test named in `task.json`
+(`--fail-fast`, 30s/test, 120s wall). No analyze, full suite, coverage,
+screenshots or builds. Timeout → BLOCKED; two unsuccessful corrective attempts
+→ stop and report the exact error, changed files and remaining acceptance.
+Never bypass a failed gate.
+**Deliver:** one commit with task.json's message, `git push origin HEAD`, then
+reply with the `AGENT <LETTER> PUSHED` block. Do not run CI, open a PR, or
+touch `main` — the Captain dispatches CI and fixes reds.
 **Skill method (optional):** {{skill repo@full SHA — exact SKILL.md path — output file inside allowed list; or "none"}} — a method only; this brief and the playbook still rule.
-**Report:** {{approved same-repo tracking issue URL + @Keshab1997, or worker chat (no tracker)}}
+**Report:** {{approved same-repo tracking issue URL, or worker chat (default)}}
 
 Finish every acceptance item in this one task, deciding details yourself inside
 the allowed files; if one item truly cannot be done, push the rest and name the
-gap in your report. Use `agent-bootstrap` `captain/FASTLANE.md` (`worker_lane.py`).
-After a verified `PUSHED`, run `mention` (if `tracker` is set) and report the
-brief link, checkpoint block, and commit/mention links. Never touch `main`, open/merge/close
-a PR, run CI, or share tokens.
+gap in your report.
 ```
 
-## `task.json` (Device Flow — primary)
+## `task.json` — Arena lane (default)
+
+```json
+{
+  "repo": "Keshab1997/{{REPO}}",
+  "worker": "{{LETTER}}",
+  "task": "{{UNIQUE_TASK_ID}}",
+  "allowed": ["{{EXACT_FILE_1}}", "{{EXACT_FILE_2}}"],
+  "commit": "{{type(scope): short description}}",
+  "check": {{CHECK_PROFILE}},
+  "arena": {"branch": "auto", "base_sha": null},
+  "tracker": "https://github.com/Keshab1997/{{REPO}}/issues/{{NUM}}"
+}
+```
+
+- `"arena"`: `{"branch": "auto", "base_sha": null}` for a fresh task from
+  `main`; `"base_sha": "<verified arena tip>"` (same `"branch": "auto"`) when the
+  task stacks on that worker's unmerged branch. Never mix with top-level
+  `base_sha`/`base_branch`.
+- `"tracker"`: optional approved same-repo issue URL.
+
+## `task.json` — Option B, unattached chat
 
 ```json
 {
@@ -48,16 +72,27 @@ a PR, run CI, or share tokens.
   "commit": "{{type(scope): short description}}",
   "check": {{CHECK_PROFILE}},
   "base_sha": null,
-  "tracker": "https://github.com/Keshab1997/{{REPO}}/issues/{{NUM}}"
+  "base_branch": null,
+  "tracker": null
 }
 ```
 
-Optional fields in Device Flow mode:
-- `"base_sha"`: `null` (or omit) to start from current `origin/main`; or a full 40-hex SHA to pin `main` or chain onto a prior verified checkpoint.
-- `"base_branch"`: optional branch holding `"base_sha"` (e.g. `"agent/{{LETTER}}/{{PREV_TASK}}"` when stacking on an unmerged checkpoint).
-- `"tracker"`: optional approved same-repo GitHub issue URL for `worker_lane.py mention`.
+Omit `"arena"`; `"base_sha": null` starts from current `origin/main`, or a full
+40-hex SHA (with `"base_branch": "agent/{{LETTER}}/{{PREV_TASK}}"` when it is not
+merged) chains onto a verified checkpoint.
 
-Optional Arena-attached mode: omit top-level `"base_sha"` / `"base_branch"` and include `"arena": {"branch": "{{ARENA_BRANCH}}", "base_sha": {{BASE_SHA_OR_NULL}}}` instead.
+## The assignment message (what the worker actually sees)
+
+```text
+You are Worker {{LETTER}} on Keshab1997/{{REPO}}.
+Brief: docs/agent-briefs/{{BATCH}}/{{TASK}}/BRIEF.md
+Spec:  …/task.json   (allowed = your only scope; check = your only gate)
+Read captain/WORKER_START_PROMPT.md and BRIEF.md, then:
+  · edit ONLY the allowed paths, stay on your arena/* branch
+  · run the one check from task.json
+  · git add -- <allowed files> && git commit -m "<task.json commit>" && git push origin HEAD
+Reply with the AGENT {{LETTER}} PUSHED block. Never main, CI, or a PR.
+```
 
 **Captain:** Size every brief by [Speed rule 1](CAPTAIN_PROMPT.md#speed-rules--keshabs-top-priority):
 one complete deliverable, up to 40 allowed files — never a micro-task.
