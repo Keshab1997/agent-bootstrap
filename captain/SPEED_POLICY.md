@@ -7,10 +7,11 @@ Existing in-flight task specs remain unchanged; never silently weaken a gate.
 
 ## Start and communicate
 
-- A pinned worker link is an execution request. Use WORKER_START_PROMPT.md and
-  fetch-brief immediately; do not explore connectors, install gh CLI, guess auth,
-  clone the target manually or ask what the link means. Device Flow is primary;
-  Arena attachment is required ONLY for a task with `arena` in task.json.
+- **The lane is the attached repo.** Keshab opens a worker chat with the target
+  repo attached and pastes the Captain's one assignment message. The worker
+  reads the brief from `docs/agent-briefs/`, edits `allowed` files, pushes its
+  own `arena/*` branch, and reports `PUSHED`. No pairing, no connector
+  exploration, no brief download, no "what does this link mean".
 - Bengali status questions such as “কী হলো”, “kiholo”, “ki holo” mean “what is the
   progress?” Answer with actual progress/blocker, then continue; do not call
   them stray text or ask the user to translate.
@@ -20,22 +21,24 @@ Existing in-flight task specs remain unchanged; never silently weaken a gate.
 - Report only a useful checkpoint, a real blocker, or a requested status. Do not
   dump internal deliberation or relay a large transcript through the user.
 
-## One worker task, one narrow gate
+## One worker task, one cheap local check
 
 - Captain chooses ONE matching existing test file when possible. New regression
   cases go into that file; a new suite is not a mandatory deliverable for every
   visual tweak. Tests accompany behavior changes where needed, not as filler.
-- Worker runs EXACTLY task.json's check. Do not add full analyze, a full suite,
-  multiple related suites, screenshots, coverage or builds by reflex. An extra
-  diagnostic may target ONE failing test; do not rerun a passing gate unchanged.
-- Flutter check formats changed Dart files, resolves the locked dependencies,
-  runs preflight when present, then ONE named test with `--fail-fast --timeout
-  30s`. The test process has a 120-second wall limit, including its child
-  processes. A passing check remains tied to the exact tested tree.
+- Worker runs **one** cheap gate: `python3 tool/preflight.py` (~1 s), or, if the
+  repo has none, a single named test file. Do not add full analyze, a full
+  suite, multiple related suites, screenshots, coverage or builds by reflex. An
+  extra diagnostic may target ONE failing test; do not rerun a passing gate
+  unchanged.
+- Flutter test: `--fail-fast --timeout 30s`, 120-second wall limit including
+  child processes. A passing check stays tied to the exact tested tree.
 - Cold SDK/dependency setup is separate and may take longer; report a setup
-  blocker instead of pretending tests ran. Non-Flutter check commands retain
-  their 300-second command bound. No full-project tests are smuggled into
-  preflight. Preflight is not equivalent to behavioral or widget testing.
+  blocker instead of pretending tests ran. Non-Flutter commands keep their
+  300-second bound. No full-project tests hidden in preflight.
+- **The broad gate is CI, and it is the Captain's job.** The worker pushes its
+  branch; the Captain dispatches `captain/ci_dispatch.py <repo> --ref <branch>`
+  and reads the failing log. Do not make a worker run CI's work locally.
 - No automatic gate bypass, no worker task.json edits, no skipping a failing
   test, no weakening assertions or production behavior to satisfy a test.
   Captain may issue a fresh pinned brief with a cheaper appropriate gate and
@@ -59,32 +62,31 @@ Existing in-flight task specs remain unchanged; never silently weaken a gate.
   If useful work exists only in an unpushed worker tree, request an honest
   blocker report; never imply the Captain can fetch edits that were not pushed.
 
-## Captain integration without duplicate work
+## Captain: review fast, run CI, fix the red
 
 - Launch big file-disjoint tasks together; make prerequisites yourself. Never
   idle when an unowned lane exists. Do not invent tasks just to occupy workers.
-- Fast-verify the exact branch/base/tip/scope, then start a justified next big
-  task before deep review. Do not move live ownership or revise an active task
-  silently. New global speed prose does not cancel its pinned acceptance.
-- Read the actual diff and check evidence. For a clean file-disjoint integration,
-  run preflight and ONE risk-focused integration check. Do not repeat every
-  worker test plus analyze plus screenshots plus full tests at each checkpoint.
-  Reuse verified evidence only for the same tree/range, SDK and command; a tree
-  change affecting it requires fresh evidence. Never trust a report without
-  checking its source/diff and remote checkpoint.
-- Shared surface is a reason to assess risk, not an automatic full test battery:
-  whitespace/docs-only need no full Flutter suite. Run full analyze/full tests
-  only for a concrete cross-module risk or the user's explicit request. Explain
-  the reason before spending that time. For UI, do ONE focused visual review
-  of changed screens, not every language/device permutation on every push.
-- Batch-ready CI is dispatched once after local integration. Do not block the
-  turn merely watching CI; do useful work or report that CI is pending. Read
-  the first failed step/log before fixing and rerunning. Never call pending CI
-  successful. Workers never dispatch CI.
+- On `PUSHED`, verify the exact branch/base/tip/scope quickly, then send that
+  worker's next big assignment before deep review. Do not move live ownership
+  or revise an active task silently. New global speed prose does not cancel its
+  pinned acceptance.
+- Review the actual diff, then dispatch ONE CI run on that branch. Read the
+  failing step/log; repair small failures yourself in the integration commit
+  instead of relaying them back. Workers never dispatch CI.
+- Do not repeat every worker test plus analyze plus screenshots plus full tests
+  at each checkpoint. Reuse verified evidence only for the same tree/range,
+  SDK and command; a tree change affecting it needs fresh evidence.
+- Shared surface is a reason to assess risk, not an automatic full local
+  battery: whitespace/docs-only need no Flutter suite. CI covers the broad run;
+  run a local full analyze/test only for a concrete cross-module risk or when
+  Keshab explicitly asks, and explain the reason first.
+- Land each checkpoint as soon as CI is green; don't wait for the whole batch.
+  Never call pending or red CI successful.
 
-## Pairing is separate from speed
+## Access is separate from speed
 
-Reuse each workspace's saved session, refresh first, resume pending codes.
-Never copy credentials to workers or force a new approval on network/config
-errors. A fresh workspace needs its own first approval. Authentication refresh
-bugs are not fixed by this policy and must be reported honestly.
+Workers already have Git access to the attached repo: never ask for a token, a
+password or a PAT, and never copy `secrets/` into a worker chat. If a push
+fails on permissions, report `BLOCKED` with the exact error and let the Captain
+fix access. The Captain's own `gh_app.py connect` reuse/refresh behaviour is
+unchanged — a network or rate-limit error is a retry, not a new approval.

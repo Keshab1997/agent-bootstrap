@@ -1,9 +1,9 @@
-# GitHub-এ brief, Device Flow-তে কাজ — Captain Fast Lane
+# সাধারণ ফ্লো — repo attach, Captain বলে দেয়, worker push করে, Captain CI চালায়
 
-**এখন আর Arena-তে প্রতিটা worker chat-এ repo attach করতে হবে না।** Captain ও
-Worker — সবাই **GitHub Device Flow** (`gh_app.py`) দিয়ে সংযুক্ত হবে। একবার
-approve করলে ওই একই Worker chat একাধিক task এবং এমনকি একাধিক repo-তেও কাজ
-করতে পারবে (Arena-র ১-PR সীমা বা branch-lock ঝামেলা নেই)।
+**খুব সহজ নিয়ম:** প্রতিটা worker chat-এ Arena UI থেকে target repo attach করে
+দিন। Captain এক message-এ বলে দেবে কী করতে হবে; worker শুধু `allowed` file
+edit করে নিজের `arena/*` branch push করবে; Captain GitHub থেকে এসে diff দেখে,
+**CI চালাবে**, লাল হলে নিজেই ঠিক করবে, তারপর `main`-এ land করবে।
 
 ## ১. Captain-কে repo আর কাজ বলুন
 
@@ -13,44 +13,40 @@ Captain চালু থাকলে starter আবার লাগবে না
 code দেখালেই শুধু GitHub-এ approve করুন।
 
 ```text
-<repo>-তে <কাজগুলো> ভাগ করে A/B/C-র brief GitHub-এ push করো।
-প্রতি worker-এর জন্য pinned link দাও।
+<repo>-তে <কাজগুলো> ভাগ করে A/B/C-কে বড় বড় task দাও।
+প্রতি worker-এর জন্য এক-একটা assignment message দাও; review, CI আর main তুমি সামলাও।
 ```
 
 **গতি সবার আগে:** Captain প্রতিটি worker-কে বড়, সম্পূর্ণ কাজ দেবে (পুরো
-feature/screen + test — ছোট ছোট টুকরো নয়), সব worker-এর link একসাথে দেবে।
-Worker-রা কাজ করার ফাঁকে Captain নিজের অংশ (shared file, জোড়া লাগানো, ছোট
+feature/screen + test — ছোট ছোট টুকরো নয়), সব worker-এর message একসাথে দেবে।
+Worker-রা কাজ করার ফাঁকেই Captain নিজের অংশ (shared file, review, CI, ছোট
 fix) নিজেই শেষ করবে — বসে অপেক্ষা করবে না।
 
-## ২. Worker chat শুরু করা (কোনো repo attach ছাড়াই)
+## ২. Worker chat শুরু করা (repo attach করে)
 
-1. সাধারণ নতুন chat খুলুন (Arena UI-তে repo attach করার দরকার নেই)।
-2. প্রথমবার chat-এ [`WORKER_START_PROMPT.md`](WORKER_START_PROMPT.md) (বা
-   `worker_up.sh`) আর Captain-এর দেওয়া এক লাইনের link দিন।
-3. Worker `XXXX-XXXX` device code দেখালে শুধু একবার
-   https://github.com/login/device -এ গিয়ে approve করুন। একবার paired হলে ওই
-   একই Worker chat-এ পরপর অনেকগুলো task ও যেকোনো repo-তে কাজ চালানো যাবে।
-4. Worker নিজেই `worker_lane.py fetch-brief` দিয়ে GitHub থেকে brief নামাবে,
-   `agent/<W>/<task>` branch-এ কোড ও test চালিয়ে push করবে।
+1. নতুন chat খুলে **target repo attach** করুন।
+2. Captain যে **এক message** দেবে সেটাই paste করুন — brief-এর path, allowed
+   file, একটাই check আর `git commit` → `git push origin HEAD` → `PUSHED` রিপোর্ট।
+3. Worker নিজের `arena/*` branch-এ কাজ push করে জানিয়ে দেবে। আপনি শুধু
+   `AGENT A PUSHED …` ব্লকটা Captain-কে দেবেন (বা Captain নিজেই GitHub থেকে
+   দেখে নেবে)।
 
-## ৩. Push যাচাই হলে mention ও পরের task
+একটাই পদ্ধতি — আলাদা tool বা pairing-এর দরকার নেই। Worker কিছু চাইলে শুধু
+`AGENT A BLOCKED` + কারণ জানাবে।
 
-Worker test চালিয়ে checkpoint push করবে এবং `worker_lane.py mention` দিয়ে
-brief-এ দেওয়া issue-তে `@Keshab1997` comment পোস্ট করবে (task, branch, base
-SHA, pushed SHA, files, check ও commit link সহ)। Tracker issue না থাকলে
-chat-এই `PUSHED` রিপোর্ট দেবে।
+## ৩. Push যাচাই, CI, আর পরের task
+
+Worker `PUSHED` দিলে Captain ওই exact `base..tip` দেখে নেয় (কোনো `allowed`
+file-এর বাইরে গেছে কি না, secret নেই কি না), তারপর ওই branch-এ CI চালায়:
 
 ```text
-Batch <id>-এর GitHub রিপোর্ট দেখে A-এর checkpoint যাচাই করো।
-ঠিক থাকলে A-এর পরের pinned brief publish করো।
+A-এর PUSHED branch দেখে CI চালাও; লাল হলে log পড়ে ঠিক করো,
+সবুজ হলে main-এ land করো, আর A-কে তার পরের বড় কাজের message দাও।
 ```
 
-Checkpoint যাচাই হলেই Captain সঙ্গে সঙ্গে পরের বড় brief দেবে; পুরো review
-আর integration Captain-এর দিকে চলবে। পরের task `main` থেকে বা দরকার হলে
-আগের verified commit (`base_sha` + `base_branch`) থেকে chain করা যাবে।
-
-*(Optional: আগে থেকে কোনো chat-এ Arena repo attach করা থাকলে সেটাও `"arena"`
-brief দিয়ে চালানো যাবে, তবে নতুন কাজের জন্য Device Flow-ই primary।)*
+Approved tracker issue থাকলে worker (বা Captain) একটা `@Keshab1997` comment
+করতে পারে — বাধ্যতামূলক নয়; chat-এর `PUSHED` ব্লকই যথেষ্ট। Checkpoint যাচাই
+হলেই Captain সঙ্গে সঙ্গে পরের বড় assignment পাঠাবে।
 
 ## ৪. Batch সত্যিই শেষ হলে
 
@@ -58,7 +54,8 @@ brief দিয়ে চালানো যাবে, তবে নতুন ক�
 Finalize batch <id> — কী land হয়েছে এবং কী বাকি দেখাও।
 ```
 
-Batch শেষে Captain সব verified `agent/*` commit review করে `main`-এ land
-করবে; CI dispatch আপনার সিদ্ধান্ত (বা আপনার অনুমতিতে `ci_dispatch.py`)।
+Batch শেষে Captain প্রতিটা verified `arena/*` branch review করে, CI সবুজ দেখে
+`main`-এ land করবে — CI চালানো ও লাল ঠিক করা Captain-এর কাজ, আপনার কিছু করতে
+হবে না।
 
 আরও: [Worker Starter](WORKER_START_PROMPT.md) · [GitHub brief-এর নিয়ম](GITHUB_BRIEFS.md) · [Fast Lane commands](FASTLANE.md) · [Captain login](../NEXT_TIME_BANGLA.md)

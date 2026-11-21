@@ -1,1006 +1,125 @@
-"""Fast Lane regressions. Run the whole offline suite with python3 selftest.py."""
+"""Captain-lane regressions. Run the whole offline suite with python3 selftest.py."""
 from __future__ import annotations
 
-import contextlib
-import hashlib
-import io
 import json
-import os
 from pathlib import Path
-import re
-import shutil
-import subprocess
-import tarfile
-import tempfile
 import unittest
-from unittest import mock
 
-import audit_fleet as audit
-import flutter_sdk as sdk
-import worker_lane as work
+import ci_dispatch
+import task_spec as spec
 
 
 def task(slug='first', allowed=('lesson.txt',), **changes):
     return dict(repo='Keshab1997/fixture', worker='A', task=slug, allowed=list(allowed),
-                commit=f'test(lesson): {slug}', check={'kind': 'preflight'}) | changes
+                commit=f'test(lesson): {slug}', check={'kind': 'preflight'},
+                arena={'branch': 'auto', 'base_sha': None}) | changes
 
 
-@unittest.skipUnless(shutil.which('git'), 'requires git')
-class CheckpointTests(unittest.TestCase):
-    branch = 'arena/fastlane-fixture'
+class TaskSpecTests(unittest.TestCase):
+    def test_a_narrow_arena_task_is_valid(self):
+        data = spec.validate_task(task(allowed=('lib/home.dart', 'test/home_test.dart'),
+                                      check={'kind': 'test', 'test': 'test/home_test.dart'}))
+        self.assertEqual(data['arena'], {'branch': 'auto', 'base_sha': None})
+        self.assertEqual(len(data['allowed']), 2)
 
-    def setUp(self):
-        tmp = tempfile.TemporaryDirectory(prefix='fastlane-git-')
-        self.addCleanup(tmp.cleanup)
-        self.root = Path(tmp.name)
-        self.remote = self.root / 'origin.git'
-        self.seed = self.root / 'captain'
-        self.seed.mkdir()
-        self.env = work.command_env() | dict(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull,
-                                             GIT_TERMINAL_PROMPT='0', GIT_ALLOW_PROTOCOL='file')
-        self.git('init', '-q', '--bare', '-b', 'main', str(self.remote))
-        self.git('init', '-q', '-b', 'main')
-        self.git('config', 'user.name', 'Fixture')
-        self.git('config', 'user.email', 'test@example.invalid')
-        self.write('lesson.txt', 'lesson at main\n')
-        self.write('pubspec.lock', 'fixture lock\n')
-        self.write('test/example_test.dart', '// initial test\n')
-        self.write('tool/preflight.py', '''from pathlib import Path
-from os import environ
-if 'FIXTURE_MUTATES' in environ:
-    Path('lesson.txt').write_text('gate changed the tree\\n')
-if 'FIXTURE_FAILS' in environ:
-    raise SystemExit(7)
-''')
-        self.git('add', '--', '.')
-        self.git('commit', '-qm', 'initial')
-        self.base = self.git('rev-parse', 'HEAD')
-        self.git('remote', 'add', 'origin', str(self.remote))
-        self.git('push', '-q', 'origin', 'main')
+    def test_stacked_task_accepts_a_full_sha_base(self):
+        sha = 'a' * 40
+        data = spec.validate_task(task(arena={'branch': 'auto', 'base_sha': sha}))
+        self.assertEqual(data['arena']['base_sha'], sha)
+        for bad in ('a' * 39, 'a' * 41, 'A' * 40, 'null'):
+            with self.subTest(base=bad), self.assertRaises(spec.SpecError):
+                spec.validate_task(task(arena={'branch': 'auto', 'base_sha': bad}))
 
-    def git(self, *args, cwd=None):
-        return subprocess.run(['git', *args], cwd=cwd or self.seed, env=self.env, check=True,
-                              capture_output=True, text=True, timeout=20).stdout.strip()
+    def test_shared_surfaces_and_secrets_are_not_assignable(self):
+        for path in ('../foo', '/root/foo', 'pubspec.lock', '.github/workflows/build.yml',
+                     'docs/*', 'secrets/access.txt', 'lib/model.g.dart', 'android/app/build.gradle',
+                     'ios/Runner/Info.plist', 'lib/main.dart', 'lib/.env.local',
+                     'android/app/upload.jks', 'google-services.json'):
+            with self.subTest(path=path), self.assertRaises(spec.SpecError):
+                spec.validate_task(task(allowed=(path,)))
 
-    def write(self, name, text, cwd=None):
-        path = (cwd or self.seed) / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
-
-    def lane(self, spec=None, checkout=None, review=False):
-        return work.Lane(spec or task(), self.root / 'workbench', checkout=checkout,
-                         review=review, _test_remote=str(self.remote))
-
-    def attach(self):
-        bound = self.root / 'bound'
-        self.git('clone', '-q', str(self.remote), str(bound))
-        self.git('switch', '-qc', self.branch, cwd=bound)
-        return bound
-
-    def linked(self, slug, bound, allowed=('lesson.txt',), branch='auto', base=None):
-        return self.lane(task(slug, allowed, arena={'branch': branch, 'base_sha': base}), bound)
-
-    def checked(self, lane, file='lesson.txt', change='checkpoint one\n'):
-        state = lane.start()
-        self.write(file, change, lane.dir)
-        lane.check()
-        return state
-
-    def heads(self):
-        return {name: sha for sha, name in (line.split('\t') for line in
-                                            self.git('ls-remote', '--heads', 'origin').splitlines())}
-
-    def reviewed_diff(self, lane, report):
-        reader = self.lane(lane.task, self.seed, review=True)
-        with contextlib.redirect_stdout(io.StringIO()) as out:
-            out.buffer = io.BytesIO()
-            reader.review(report['branch'], report['base_sha'], report['commit'])
-        return out.buffer.getvalue().decode()
-
-    def test_two_checkpoints_one_attached_branch_and_review_only_new_delta(self):
-        bound = self.attach()
-        lane = self.linked('first', bound, ('first note.txt',))
-        self.checked(lane, 'first note.txt', 'first checkpoint\n')
-        done = lane.publish()
-        sha = done['commit']
-        self.assertIn('first note.txt', self.reviewed_diff(lane, done))
-        self.assertEqual(lane.describe(done, confirmed=True).splitlines()[0], 'AGENT A PUSHED')
-        self.assertNotIn('PUSHED', lane.describe(done))
-        self.assertEqual(done['base_sha'], self.base)
-        self.assertEqual(done['branch'], self.branch)
-        self.assertEqual(lane.publish()['commit'], sha)
-
-        # The second brief needs the *exact* branch AND verified previous tip.
-        for branch, base in (('auto', None), ('auto', sha), (self.branch, self.base)):
-            with self.subTest(branch=branch, base=base):
-                with self.assertRaises(work.LaneError):
-                    self.linked('second', bound, branch=branch, base=base).start()
-        next_task = self.linked('second', bound, branch=self.branch, base=sha)
-        self.assertEqual(self.checked(next_task, change='checkpoint two\n')['base_sha'], sha)
-        second = next_task.publish()
-        patch = self.reviewed_diff(next_task, second)
-        self.assertIn('checkpoint two', patch)
-        self.assertNotIn('first note.txt', patch)
-        self.assertEqual(self.heads(), {'refs/heads/main': self.base,
-                                        'refs/heads/' + self.branch: second['commit']})
-        self.assertEqual(self.git('branch', '--show-current', cwd=bound), self.branch)
-        self.assertEqual(self.git('rev-parse', 'HEAD'), self.base)  # review is fetch-only
-        with self.assertRaisesRegex(work.LaneError, 'moved'):
-            lane.publish()
-
-    def test_standalone_reuses_clone_and_starts_next_task_at_new_main(self):
-        lane = self.lane()
-        self.checked(lane)
-        first = lane.publish()['commit']
-        self.write('upstream.txt', 'change landed between worker tasks\n')
-        self.git('add', '--', 'upstream.txt')
-        self.git('commit', '-qm', 'captain integration')
-        self.git('push', '-q', 'origin', 'main')
-        main = self.git('rev-parse', 'HEAD')
-        (lane.dir / '.git' / 'config').unlink()  # snapshot dropped the origin
-        second = self.lane(task('second'))
-        state = self.checked(second, change='standalone task two\n')
-        self.assertEqual(lane.dir, second.dir)
-        self.assertEqual(state['base_sha'], main)
-        self.assertEqual(self.git('rev-parse', 'main', cwd=second.dir), self.base)
-        tip = second.publish()['commit']
-        self.assertEqual(self.heads(), {'refs/heads/main': main,
-                                        'refs/heads/agent/A/first': first,
-                                        'refs/heads/agent/A/second': tip})
-
-    def test_start_blocks_overlap_dirty_wrong_branch_and_wrong_origin(self):
-        bound = self.attach()
-        with self.assertRaisesRegex(work.LaneError, 'Wrong or detached'):
-            self.linked('first', bound, branch='arena/not-this-one').start()
-        lane = self.linked('first', bound)
-        self.write('lesson.txt', 'existing work\n', bound)
-        with self.assertRaisesRegex(work.LaneError, 'Local changes'):
-            lane.start()
-        self.assertEqual((bound / 'lesson.txt').read_text(), 'existing work\n')
-        self.write('lesson.txt', 'lesson at main\n', bound)
-        self.git('remote', 'set-url', '--push', 'origin', str(self.root / 'other.git'), cwd=bound)
-        with self.assertRaisesRegex(work.LaneError, 'URLs do not match'):
-            lane.start()
-        self.git('remote', 'set-url', '--push', 'origin', str(self.remote), cwd=bound)
-        lane.start()
-        with self.assertRaisesRegex(work.LaneError, 'unfinished'):
-            self.linked('second', bound).start()
-        self.assertEqual(self.heads(), {'refs/heads/main': self.base})
-
-    def test_out_of_scope_symlink_and_possible_credentials_stay_local(self):
-        lane = self.lane()
-        lane.start()
-        self.write('lesson.txt', 'new text\n', lane.dir)
-        self.write('other.txt', 'unrelated work\n', lane.dir)
-        with self.assertRaisesRegex(work.LaneError, 'Out-of-scope'):
-            lane.check()
-        self.assertEqual((lane.dir / 'other.txt').read_text(), 'unrelated work\n')
-        (lane.dir / 'other.txt').unlink()
-        (lane.dir / 'lesson.txt').unlink()
-        (lane.dir / 'lesson.txt').symlink_to(self.seed / 'lesson.txt')
-        with self.assertRaisesRegex(work.LaneError, 'Symlinks'):
-            lane.check()
-        (lane.dir / 'lesson.txt').unlink()
-        self.write('lesson.txt', 'fake ' + 'ghp_' + 'A' * 40 + '\n', lane.dir)
-        with self.assertRaisesRegex(work.LaneError, 'Possible credential'):
-            lane.check()
-        self.assertEqual(self.git('diff', '--cached', '--name-only', cwd=lane.dir), '')
-        self.assertEqual(self.heads(), {'refs/heads/main': self.base})
-
-    def test_changed_or_failed_check_cannot_publish(self):
-        lane = self.lane()
-        self.checked(lane)
-        self.write('lesson.txt', 'unverified edit\n', lane.dir)
-        with self.assertRaisesRegex(work.LaneError, 'differ from the tested tree'):
-            lane.publish()
-        with mock.patch.dict(os.environ, FIXTURE_FAILS='1'):
-            with self.assertRaisesRegex(work.LaneError, 'exit 7'):
-                lane.check()
-        with self.assertRaisesRegex(work.LaneError, 'Run check successfully'):
-            lane.publish()
-        with mock.patch.dict(os.environ, FIXTURE_MUTATES='1'):
-            with self.assertRaisesRegex(work.LaneError, 'changed the tested worktree'):
-                lane.check()
-        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=lane.dir), self.base)
-        self.assertEqual(self.heads(), {'refs/heads/main': self.base})
-
-    def test_captain_check_profile_revision_preserves_edits_without_widening_scope(self):
-        bound = self.attach()
-        initial = task('flutter-blocked', ('lesson.txt', 'test/example_test.dart'),
-                       arena={'branch': 'auto', 'base_sha': self.base},
-                       check={'kind': 'flutter', 'version': '3.50.0', 'test': 'test/example_test.dart'})
-        self.lane(initial, bound).start()
-        self.write('lesson.txt', 'saved worker fix\n', bound)
-        revised = initial | {'check': {'kind': 'preflight'}}
-        lane = self.lane(revised, bound)
-        # diff/publish still reject an un-checked revision; scope/commit changes always fail.
-        with self.assertRaisesRegex(work.LaneError, 'Task spec'):
-            lane.publish()
-        with self.assertRaisesRegex(work.LaneError, 'Task spec'):
-            self.lane(revised | {'commit': 'tampered'}, bound).check()
-        with self.assertRaisesRegex(work.LaneError, 'Task spec'):
-            self.lane(revised | {'allowed': ['lesson.txt']}, bound).check()
-        checked = lane.check()
-        self.assertEqual(checked['check_result'], 'preflight passed')
-        done = lane.publish()
-        self.assertIn('saved worker fix', self.reviewed_diff(lane, done))
-        # Once committed/pushed, check profile cannot change either.
-        with self.assertRaisesRegex(work.LaneError, 'Task spec'):
-            self.lane(initial, bound).check()
-
-    def test_timed_out_recheck_cannot_publish_old_pass_or_lose_edits(self):
-        lane = self.lane()
-        self.checked(lane)
-        with mock.patch.object(lane, 'run_gate', side_effect=work.LaneError('gate timed out')):
-            with self.assertRaisesRegex(work.LaneError, 'timed out'):
-                lane.check()
-        state = lane.load()
-        self.assertNotIn('checked_tree', state)
-        self.assertNotIn('check_result', state)
-        self.assertEqual((lane.dir / 'lesson.txt').read_text(), 'checkpoint one\n')
-        with self.assertRaisesRegex(work.LaneError, 'Run check successfully'):
-            lane.publish()
-        self.assertEqual(self.heads(), {'refs/heads/main': self.base})
-
-    def test_ambiguous_push_recovery_does_not_create_extra_commits(self):
-        lane = self.lane()
-        self.checked(lane)
-        execute = lane.git
-
-        def push_then_interrupt(*args, **opts):
-            result = execute(*args, **opts)
-            if args[0] == 'push':
-                raise work.LaneError('simulated interrupted turn after push')
-            return result
-
-        with mock.patch.object(lane, 'git', side_effect=push_then_interrupt):
-            with self.assertRaisesRegex(work.LaneError, 'interrupted'):
-                lane.publish()
-        pending = lane.load()
-        self.assertFalse(pending['pushed'])
-        self.assertEqual(self.heads()['refs/heads/agent/A/first'], pending['commit'])
-        recovered = lane.publish()
-        self.assertTrue(recovered['pushed'])
-        self.assertEqual(recovered['commit'], pending['commit'])
-        self.assertEqual(self.git('show', '-s', '--format=%P', 'HEAD', cwd=lane.dir), self.base)
-
-    def test_linked_remote_move_blocks_before_commit(self):
-        bound = self.attach()
-        self.git('push', '-q', 'origin', 'HEAD:refs/heads/' + self.branch, cwd=bound)
-        lane = self.linked('first', bound)
-        self.checked(lane)
-        self.write('other.txt', 'remote concurrent work\n')
-        self.git('add', '--', 'other.txt')
-        self.git('commit', '-qm', 'other writer')
-        self.git('push', '-q', 'origin', 'HEAD:refs/heads/' + self.branch)
-        with self.assertRaisesRegex(work.LaneError, 'moved'):
-            lane.publish()
-        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=bound), self.base)
-        self.assertEqual((bound / 'lesson.txt').read_text(), 'checkpoint one\n')
-        self.assertEqual(self.heads()['refs/heads/' + self.branch], self.git('rev-parse', 'HEAD'))
-
-    def _simulate_arena_head_rewind(self, bound, ancestor):
-        branch = self.git('branch', '--show-current', cwd=bound)
-        self.git('update-ref', 'refs/heads/' + branch, ancestor, cwd=bound)
-        self.git('read-tree', ancestor, cwd=bound)
-
-    def test_restored_snapshot_over_ancestor_head_reconciles_and_publishes(self):
-        # Seed a deletable file + gitignore so overlay deletions & ignored files are exercised too.
-        self.write('.gitignore', 'ignored.tmp\n')
-        self.write('retired.txt', 'old file from base\n')
-        self.git('add', '--', '.gitignore', 'retired.txt')
-        self.git('commit', '-qm', 'add retired and gitignore')
-        self.git('push', '-q', 'origin', 'main')
-        base = self.git('rev-parse', 'HEAD')
-        bound = self.attach()
-
-        first = self.linked('b1', bound, ('lesson.txt', 'added_b1.txt', 'retired.txt'), base=base)
-        first.start()
-        self.write('lesson.txt', 'after b1\n', bound)
-        self.write('added_b1.txt', 'new in b1\n', bound)
-        (bound / 'retired.txt').unlink()
-        first.check()
-        c1 = first.publish()['commit']
-
-        second = self.linked('b2', bound, ('lesson.txt', 'added_b2.txt'), branch=self.branch, base=c1)
-        second.start()
-        self.write('lesson.txt', 'after b2\n', bound)
-        self.write('added_b2.txt', 'new in b2\n', bound)
-        second.check()
-        c2 = second.publish()['commit']
-
-        # Arena wakes the session with HEAD+index at `base`, workspace files from `c2`,
-        # `retired.txt` still present from the fresh `base` clone, plus an ignored cache file.
-        self._simulate_arena_head_rewind(bound, base)
-        self.write('retired.txt', 'old file from base\n', bound)
-        self.write('ignored.tmp', 'keep me\n', bound)
-        self.assertNotEqual(self.git('status', '--porcelain', cwd=bound), '')
-
-        third = self.linked('b3', bound, ('lesson.txt',), branch=self.branch, base=c2)
-        started = third.start()
-        self.assertEqual(started['base_sha'], c2)
-        self.assertEqual(started['restored_from'], base)
-        self.assertIn('restored_from: ' + base, third.describe(started))
-        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=bound), c2)
-        self.assertEqual(self.git('status', '--porcelain', cwd=bound), '')
-        self.assertFalse((bound / 'retired.txt').exists())
-        self.assertEqual((bound / 'ignored.tmp').read_text(), 'keep me\n')
-
-        self.write('lesson.txt', 'after b3 polish\n', bound)
-        third.check()
-        done = third.publish()
-        patch = self.reviewed_diff(third, done)
-        self.assertIn('after b3 polish', patch)
-        self.assertNotIn('added_b1.txt', patch)
-        self.assertNotIn('added_b2.txt', patch)
-
-    def test_restored_clean_and_shallow_ancestor_checkouts_fast_forward(self):
-        bound = self.attach()
-        first = self.linked('b1', bound, ('lesson.txt', 'new.txt'))
-        first.start()
-        self.write('lesson.txt', 'v2\n', bound)
-        self.write('new.txt', 'created\n', bound)
-        first.check()
-        c1 = first.publish()['commit']
-
-        # Case 1: clean ancestor checkout at self.base.
-        self.git('reset', '--hard', self.base, cwd=bound)
-        second = self.linked('b2', bound, ('lesson.txt',), branch=self.branch, base=c1)
-        started = second.start()
-        self.assertEqual(started['base_sha'], c1)
-        self.assertEqual(started['restored_from'], self.base)
-        self.assertEqual((bound / 'new.txt').read_text(), 'created\n')
-        self.write('lesson.txt', 'v3\n', bound)
-        second.check()
-        c2 = second.publish()['commit']
-
-        # Case 2: fresh shallow (--depth 1) clone at self.base overlaid with c2 files.
-        shallow = self.root / 'shallow'
-        subprocess.run(['git', 'clone', '-q', '--depth', '1', '--branch', 'main',
-                        'file://' + str(self.remote), str(shallow)], check=True)
-        self.git('switch', '-qc', self.branch, cwd=shallow)
-        self.write('lesson.txt', 'v3\n', shallow)
-        self.write('new.txt', 'created\n', shallow)
-        other_root = self.root / 'wb2'
-        third = work.Lane(task('b3', ('lesson.txt',), arena={'branch': self.branch, 'base_sha': c2}),
-                          other_root, checkout=shallow, _test_remote='file://' + str(self.remote))
-        resumed = third.start()
-        self.assertEqual(resumed['base_sha'], c2)
-        self.assertEqual(resumed['restored_from'], self.base)
-        self.assertEqual(self.git('status', '--porcelain', cwd=shallow), '')
-
-    def test_restored_snapshot_mid_task_and_post_push_preserves_edits(self):
-        bound = self.attach()
-        first = self.linked('b1', bound, ('extra.txt',))
-        self.checked(first, 'extra.txt', 'from b1\n')
-        c1 = first.publish()['commit']
-
-        second = self.linked('b2', bound, ('lesson.txt',), branch=self.branch, base=c1)
-        second.start()
-        self.write('lesson.txt', 'in-flight ui polish\n', bound)
-        # Hibernate mid-edit: HEAD rewinds to self.base while files stay intact.
-        self._simulate_arena_head_rewind(bound, self.base)
-        checked = second.check()
-        self.assertEqual(checked['restored_from'], self.base)
-        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=bound), c1)
-        self.assertEqual((bound / 'lesson.txt').read_text(), 'in-flight ui polish\n')
-
-        # Interrupt right after push, then hibernate back to self.base before retry.
-        execute = second.git
-
-        def push_then_drop(*args, **opts):
-            result = execute(*args, **opts)
-            if args[0] == 'push':
-                raise work.LaneError('turn ended after push')
-            return result
-
-        with mock.patch.object(second, 'git', side_effect=push_then_drop):
-            with self.assertRaisesRegex(work.LaneError, 'turn ended'):
-                second.publish()
-        pushed_sha = self.heads()['refs/heads/' + self.branch]
-        self._simulate_arena_head_rewind(bound, self.base)
-        finished = second.publish()
-        self.assertTrue(finished['pushed'])
-        self.assertEqual(finished['commit'], pushed_sha)
-        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=bound), pushed_sha)
-
-    def test_restored_ancestor_never_overwrites_unsaved_staged_or_diverged_work(self):
-        self.write('retired.txt', 'original\n')
-        self.git('add', '--', 'retired.txt')
-        self.git('commit', '-qm', 'add retired')
-        self.git('push', '-q', 'origin', 'main')
-        base = self.git('rev-parse', 'HEAD')
-        bound = self.attach()
-
-        first = self.linked('b1', bound, ('lesson.txt', 'retired.txt'), base=base)
-        first.start()
-        self.write('lesson.txt', 'pinned text\n', bound)
-        (bound / 'retired.txt').unlink()
-        first.check()
-        c1 = first.publish()['commit']
-
-        # 1. Modified tracked file differs from c1 -> blocked, untouched.
-        self._simulate_arena_head_rewind(bound, base)
-        self.write('lesson.txt', 'unsaved user draft\n', bound)
-        with self.assertRaisesRegex(work.LaneError, 'Local changes'):
-            self.linked('b2', bound, branch=self.branch, base=c1).start()
-        self.assertEqual((bound / 'lesson.txt').read_text(), 'unsaved user draft\n')
-        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=bound), base)
-
-        # 2. Extra untracked file not in c1 -> blocked, untouched.
-        self.write('lesson.txt', 'pinned text\n', bound)
-        self.write('notes.txt', 'private scratch\n', bound)
-        with self.assertRaisesRegex(work.LaneError, 'Local changes'):
-            self.linked('b2', bound, branch=self.branch, base=c1).start()
-        self.assertEqual((bound / 'notes.txt').read_text(), 'private scratch\n')
-        (bound / 'notes.txt').unlink()
-
-        # 3. Deleted-in-c1 file edited locally (differs from base) -> blocked, untouched.
-        self.write('retired.txt', 'user edited retired\n', bound)
-        with self.assertRaisesRegex(work.LaneError, 'Local changes'):
-            self.linked('b2', bound, branch=self.branch, base=c1).start()
-        self.assertEqual((bound / 'retired.txt').read_text(), 'user edited retired\n')
-        (bound / 'retired.txt').unlink()
-
-        # 4. Staged index edit differs from c1 while worktree matches c1 -> blocked, index kept.
-        self.write('lesson.txt', 'staged secret draft\n', bound)
-        self.git('add', '--', 'lesson.txt', cwd=bound)
-        self.write('lesson.txt', 'pinned text\n', bound)
-        with self.assertRaisesRegex(work.LaneError, 'Local changes'):
-            self.linked('b2', bound, branch=self.branch, base=c1).start()
-        self.assertIn('staged secret draft', self.git('diff', '--cached', cwd=bound))
-        self.git('read-tree', base, cwd=bound)
-
-        # 5. Diverged local commit (not ancestor of c1) -> blocked, commit kept.
-        self.git('reset', '--hard', base, cwd=bound)
-        self.write('local.txt', 'unpushed commit\n', bound)
-        self.git('add', '--', 'local.txt', cwd=bound)
-        self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.com',
-                 'commit', '-qm', 'diverged local work', cwd=bound)
-        diverged = self.git('rev-parse', 'HEAD', cwd=bound)
-        with self.assertRaisesRegex(work.LaneError, 'pinned base'):
-            self.linked('b2', bound, branch=self.branch, base=c1).start()
-        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=bound), diverged)
-
-        # 6. Remote tip moved away from c1 -> never reconciles to stale pin.
-        self.git('reset', '--hard', base, cwd=bound)
-        self.git('push', '-qf', 'origin', f'{diverged}:refs/heads/{self.branch}', cwd=bound)
-        with self.assertRaisesRegex(work.LaneError, 'pinned base'):
-            self.linked('b2', bound, branch=self.branch, base=c1).start()
-        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=bound), base)
-
-    def test_captain_rejects_wrong_tip_base_branch_scope(self):
-        lane = self.lane()
-        self.checked(lane)
-        state = lane.publish()
-        reader = self.lane(lane.task, self.seed, review=True)
-        for branch, base, tip in ((state['branch'], self.base, 'a' * 40),
-                                  (state['branch'], 'a' * 40, state['commit']),
-                                  ('main', self.base, state['commit'])):
-            with self.assertRaises(work.LaneError):
-                reader.review(branch, base, tip)
-        narrower = self.lane(task(allowed=('not-lesson.txt',)), self.seed, review=True)
-        with self.assertRaisesRegex(work.LaneError, 'Out-of-scope'):
-            narrower.review(state['branch'], self.base, state['commit'])
-
-    def test_flutter_gate_format_then_locked_targeted_check_and_no_lock_mutation(self):
-        test = 'test/example_test.dart'
-        lane = self.lane(task(allowed=(test,), check={'kind': 'flutter', 'version': '3.50.0', 'test': test}))
-        lane.start()
-        self.write(test, '// not formatted\n', lane.dir)
-        real_run = work.run_bounded
-        commands = []
-
-        def fake_run(argv, **kwargs):
-            exe = Path(argv[0]).name
-            if exe in ('dart', 'flutter'):
-                commands.append((exe, *argv[1:]))
-                if exe == 'flutter' and 'test' in argv:
-                    self.assertEqual(kwargs['timeout'], 120)
-                if exe == 'dart':
-                    self.write(test, '// formatted\n', lane.dir)
-                return subprocess.CompletedProcess(argv, 0)
-            return real_run(argv, **kwargs)
-
-        with mock.patch.object(work, 'ensure_flutter', return_value=self.root / 'flutter') as ensure, \
-                mock.patch.object(work, 'run_bounded', side_effect=fake_run):
-            checked = lane.check()
-            self.assertIn('Flutter 3.50.0', checked['check_result'])
-            self.assertEqual(ensure.call_args.args[0], '3.50.0')
-        self.assertEqual(commands, [('flutter', 'pub', 'get', '--enforce-lockfile'),
-                                    ('dart', 'format', test), ('flutter', 'test', '--no-pub',
-                                    '--fail-fast', '--timeout', '30s', test)])
-        self.write('pubspec.lock', 'modified lock\n', lane.dir)
-        with self.assertRaisesRegex(work.LaneError, 'Out-of-scope.*pubspec.lock'):
-            lane.publish()
-        self.assertEqual(self.heads(), {'refs/heads/main': self.base})
-
-
-class BoundedGateTests(unittest.TestCase):
-    def test_success_and_failure_exit_codes_are_preserved(self):
-        for code in (0, 7):
-            result = work.run_bounded(
-                [work.sys.executable, '-c', f'raise SystemExit({code})'],
-                cwd=Path.cwd(), env=work.command_env(), timeout=5)
-            self.assertEqual(result.returncode, code)
-
-    def test_timeout_reports_blocked_and_stops_the_process_group(self):
-        with mock.patch.object(work.os, 'killpg', wraps=os.killpg) as kill:
-            with self.assertRaisesRegex(work.LaneError, 'no check recorded.*BLOCKED'):
-                work.run_bounded(
-                    [work.sys.executable, '-c', 'import time; time.sleep(30)'],
-                    cwd=Path.cwd(), env=work.command_env(), timeout=0.1)
-            kill.assert_called_once()
-            self.assertEqual(kill.call_args.args[1], work.signal.SIGKILL)
-
-
-class SpecTests(unittest.TestCase):
-    def test_examples_are_valid_disjoint_task_specs(self):
-        allocations = set()
-        for path in sorted(Path(__file__).parent.glob('examples/WORKER_*.md')):
-            spec = work.validate_task(json.loads(re.search(r'```json\n(.*?)\n```', path.read_text(), re.S)[1]))
-            files = {(spec['repo'], file) for file in spec['allowed']}
-            self.assertFalse(allocations & files)
-            allocations.update(files)
-        self.assertTrue(allocations)
-
-    @unittest.skipUnless(shutil.which('git'), 'requires git')
-    def test_saved_git_access_is_scoped_to_the_one_https_repo(self):
-        with tempfile.TemporaryDirectory() as directory:
-            token = Path(directory) / 'fake-token'
-            token.write_text('fake-not-a-credential\n')
-            env = work.command_env() | dict(WORKER_TOKEN_FILE=str(token), WORKER_GIT_PATH='Keshab1997/fixture.git',
-                                            GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull,
-                                            GIT_TERMINAL_PROMPT='0', GIT_ASKPASS='/bin/false')
-            cmd = ['git', '-c', 'credential.helper=', '-c', 'credential.useHttpPath=true',
-                   '-c', 'credential.helper=' + work.HELPER, 'credential', 'fill']
-
-            def call(protocol, host, path):
-                return subprocess.run(cmd, cwd=directory, env=env, text=True, timeout=10,
-                                      capture_output=True, input=f'protocol={protocol}\nhost={host}\npath={path}\n\n')
-
-            ok = call('https', 'github.com', 'Keshab1997/fixture.git')
-            self.assertEqual(ok.returncode, 0, ok.stderr)
-            self.assertIn('username=x-access-token\npassword=fake-not-a-credential\n', ok.stdout)
-            for protocol, host, path in (('http', 'github.com', 'Keshab1997/fixture.git'),
-                                         ('https', 'other.example', 'Keshab1997/fixture.git'),
-                                         ('https', 'github.com', 'Keshab1997/other.git')):
-                result = call(protocol, host, path)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertNotIn('fake-not-a-credential', result.stdout + result.stderr)
-
-    def test_manifest_blocks_shared_paths_ref_escape_and_unpinned_flutter(self):
-        for path in ('../foo', '/root/foo', 'pubspec.lock', '.github/workflows/build.yml', 'docs/*',
-                     'secrets/access.txt', 'lib/model.g.dart', 'tool/preflight.py'):
-            with self.subTest(path=path), self.assertRaises(work.LaneError):
-                work.validate_task(task(allowed=(path,)))
+    def test_manifest_rejects_bad_identity_and_check(self):
         for changes in ({'task': 'bad/ref'}, {'repo': 'other/fixture'}, {'worker': 'D'},
+                        {'allowed': []}, {'allowed': [f'lib/f{i}.dart' for i in range(41)]},
+                        {'allowed': ('a.dart', 'a.dart')},
+                        {'commit': 'two\nlines'},
+                        {'check': {'kind': 'flutter', 'version': 'latest', 'test': 'test/a_test.dart'}},
+                        {'check': {'kind': 'test', 'test': 'lib/a_test.dart'}},
+                        {'check': {'kind': 'test', 'test': 'test/a.dart'}},
                         {'arena': {'branch': 'main', 'base_sha': None}},
-                        {'check': {'kind': 'flutter', 'version': 'latest', 'test': 'test/a_test.dart'}}):
-            with self.subTest(changes=changes), self.assertRaises(work.LaneError):
-                work.validate_task(task(**changes))
+                        {'arena': {'branch': 'auto', 'base_sha': None}, 'base_sha': None},
+                        {'tracker': 'https://example.com/x/issues/1'}):
+            with self.subTest(changes=changes), self.assertRaises(spec.SpecError):
+                spec.validate_task(task(**changes))
+
+    def test_preflight_and_one_test_are_the_only_checks(self):
+        for check in ({'kind': 'preflight'}, {'kind': 'test', 'test': 'test/a_test.dart'}):
+            with self.subTest(check=check):
+                self.assertEqual(spec.validate_task(task(check=check))['check'], check)
 
 
-@unittest.skipUnless(shutil.which('tar') and shutil.which('xz'), 'requires tar and xz')
-class SDKTests(unittest.TestCase):
-    version = '3.50.0'
+class CiLogTests(unittest.TestCase):
+    """The Captain reads a red run's log in the same call; no second round trip."""
 
-    def setUp(self):
-        tmp = tempfile.TemporaryDirectory(prefix='fastlane-flutter-')
-        self.addCleanup(tmp.cleanup)
-        self.root = Path(tmp.name)
-        self.cache = self.root / 'cache'
-        self.release_path = f'stable/linux/flutter_linux_{self.version}-stable.tar.xz'
-        self.env = {'PATH': os.defpath, 'CI': 'true', 'FB_WARM_CACHE': '0'}  # official-path tests stay download-exact
+    def fake_fetch(self, lines):
+        return lambda path: '\n'.join(lines) + '\n'
 
-    def archive(self, version):
-        stream = io.BytesIO()
-        with tarfile.open(fileobj=stream, mode='w:xz') as tar:
-            for name, content in (('flutter', b'#!/bin/sh\nprintf \'{"frameworkVersion":"' + version.encode() + b'"}\\n\'\n'),
-                                  ('dart', b'#!/bin/sh\nexit 0\n')):
-                info = tarfile.TarInfo('flutter/bin/' + name)
-                info.size = len(content)
-                info.mode = 0o755
-                tar.addfile(info, io.BytesIO(content))
-        return stream.getvalue()
+    def test_failed_log_shows_the_failing_step_and_context(self):
+        lines = ['##[group]Run flutter test', 'flutter test'] + \
+                [f'ok line {i}' for i in range(30)] + \
+                ['##[error]Process completed with exit code 1.', 'test failed: home_screen_test.dart']
+        out = ci_dispatch.failed_log('Keshab1997/fixture', 42, tail=8, fetch=self.fake_fetch(lines))
+        self.assertIn('##[error]Process completed with exit code 1.', out)
+        self.assertIn('test failed: home_screen_test.dart', out)
+        self.assertTrue(all(line.startswith('      | ') for line in out.splitlines()))
 
-    def sources(self, archive, digest):
-        item = {'version': self.version, 'channel': 'stable', 'dart_sdk_arch': 'x64',
-                'archive': self.release_path, 'sha256': digest}
-        manifest = json.dumps({'releases': [item | {'dart_sdk_arch': 'arm64'}, item]}).encode()
-        store = {sdk.BASE_URL + 'releases_linux.json': manifest, sdk.BASE_URL + self.release_path: archive}
+    def test_failed_log_is_bounded_and_never_raises(self):
+        out = ci_dispatch.failed_log('Keshab1997/fixture', 42, tail=3,
+                                     fetch=self.fake_fetch(['a', 'b', 'c', 'd', 'e']))
+        self.assertEqual(len(out.splitlines()), 3)
 
-        def open_fake(url, *, timeout):
-            response = io.BytesIO(store[url])
-            response.geturl = lambda: url
-            return response
-        return mock.patch.object(sdk, 'urlopen', side_effect=open_fake)
+        def boom(path):
+            raise RuntimeError('no permission')
 
-    def test_install_then_reuse_without_more_downloads(self):
-        payload = self.archive(self.version)
-        with self.sources(payload, hashlib.sha256(payload).hexdigest()) as opened, \
-                contextlib.redirect_stderr(io.StringIO()):
-            location = sdk.ensure_flutter(self.version, self.env, self.cache)
-            self.assertEqual(location, self.cache / self.version)
-            self.assertEqual(sdk.ensure_flutter(self.version, self.env, self.cache), location)
-            self.assertEqual(opened.call_count, 2)  # manifest + one archive
-
-    def test_warm_probe_failure_falls_back_to_official(self):
-        # FB_WARM_CACHE unset -> warm enabled. The fake store has no warm
-        # manifest, so the probe raises and the official path must install.
-        payload = self.archive(self.version)
-        with self.sources(payload, hashlib.sha256(payload).hexdigest()) as opened, \
-                contextlib.redirect_stderr(io.StringIO()):
-            env = {k: v for k, v in self.env.items() if k != 'FB_WARM_CACHE'}
-            location = sdk.ensure_flutter(self.version, env, self.cache)
-        self.assertEqual(location, self.cache / self.version)
-        # SDK warm probe + official manifest + archive + pub-cache warm probe
-        self.assertEqual(opened.call_count, 4)
-
-    def test_pub_cache_seed_never_touches_an_existing_cache(self):
-        pub = self.root / 'pub-cache'
-        (pub / 'hosted').mkdir(parents=True)
-        with mock.patch.object(sdk, 'urlopen', side_effect=AssertionError('no network')) as probe:
-            self.assertFalse(sdk.restore_pub_cache(self.cache, {'PUB_CACHE': str(pub)}))
-            self.assertEqual(probe.call_count, 0)  # a warm cache is never re-probed
-        self.assertTrue((pub / 'hosted').is_dir())
-
-    def test_pub_cache_seed_is_off_with_the_warm_cache(self):
-        with mock.patch.object(sdk, 'urlopen', side_effect=AssertionError('no network')) as probe:
-            self.assertFalse(sdk.restore_pub_cache(self.cache, {'FB_WARM_CACHE': '0'}))
-            self.assertEqual(probe.call_count, 0)
-        self.assertFalse((self.cache / 'pub-cache').exists())
-
-    def test_checksum_or_version_mismatch_never_publishes_sdk(self):
-        for reported_version, verified, expected in ((self.version, False, 'SHA-256'), ('3.47.9', True, 'usable')):
-            with self.subTest(reported_version=reported_version, verified=verified):
-                payload = self.archive(reported_version)
-                digest = hashlib.sha256(payload).hexdigest() if verified else '0' * 64
-                with self.sources(payload, digest), contextlib.redirect_stderr(io.StringIO()):
-                    with self.assertRaisesRegex(sdk.SDKError, expected):
-                        sdk.ensure_flutter(self.version, self.env, self.cache)
-                self.assertFalse((self.cache / self.version).exists())
-                self.assertEqual(list(self.cache.glob('.install-*')), [])
-
-    def test_resumes_across_tls_drops_and_short_streams(self):
-        import ssl
-        from urllib.error import URLError
-
-        payload = self.archive(self.version)
-        digest = hashlib.sha256(payload).hexdigest()
-        manifest_url = sdk.BASE_URL + 'releases_linux.json'
-        archive_url = sdk.BASE_URL + self.release_path
-        manifest = json.dumps({'releases': [{
-            'version': self.version, 'channel': 'stable', 'dart_sdk_arch': 'x64',
-            'archive': self.release_path, 'sha256': digest,
-        }]}).encode()
-        cut1 = max(1, len(payload) // 3)
-        cut2 = max(cut1 + 1, (2 * len(payload)) // 3)
-        ranges = []
-        manifest_calls = 0
-        archive_calls = 0
-
-        class FakeStream:
-            def __init__(self, url, body, *, status=200, headers=None, drop=None):
-                self._url = url
-                self._buf = io.BytesIO(body)
-                self.status = status
-                self.headers = headers or {}
-                self._drop = drop
-
-            def geturl(self):
-                return self._url
-
-            def read(self, size=-1):
-                data = self._buf.read(size)
-                if not data and self._drop is not None:
-                    err, self._drop = self._drop, None
-                    raise err
-                return data
-
-            def close(self):
-                self._buf.close()
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_):
-                self.close()
-
-        def open_flaky(target, *, timeout):
-            nonlocal manifest_calls, archive_calls
-            url = target if isinstance(target, str) else target.full_url
-            if url == manifest_url:
-                manifest_calls += 1
-                if manifest_calls == 1:
-                    raise URLError(ssl.SSLEOFError('TLS EOF during manifest'))
-                return FakeStream(url, manifest)
-            self.assertEqual(url, archive_url)
-            archive_calls += 1
-            hdr_range = None if isinstance(target, str) else target.get_header('Range')
-            ranges.append(hdr_range)
-            if archive_calls == 1:
-                # Drops mid-stream with SSLEOFError after delivering payload[:cut1].
-                return FakeStream(
-                    url, payload[:cut1], status=200,
-                    headers={'Content-Length': str(len(payload)), 'ETag': '"v350"'},
-                    drop=ssl.SSLEOFError('EOF occurred in violation of protocol'),
-                )
-            if archive_calls == 2:
-                # Resumes at cut1, then closes silently before Content-Length at cut2.
-                self.assertEqual(hdr_range, f'bytes={cut1}-')
-                return FakeStream(
-                    url, payload[cut1:cut2], status=206,
-                    headers={'Content-Range': f'bytes {cut1}-{len(payload) - 1}/{len(payload)}', 'ETag': '"v350"'},
-                )
-            # Final segment delivers remaining bytes, then raises trailing SSLEOFError.
-            self.assertEqual(hdr_range, f'bytes={cut2}-')
-            return FakeStream(
-                url, payload[cut2:], status=206,
-                headers={'Content-Range': f'bytes {cut2}-{len(payload) - 1}/{len(payload)}', 'ETag': '"v350"'},
-                drop=ssl.SSLEOFError('trailing EOF without close_notify'),
-            )
-
-        with mock.patch.object(sdk, 'urlopen', side_effect=open_flaky), \
-                mock.patch.object(sdk, 'CHUNK_BYTES', 32), \
-                mock.patch.object(sdk.time, 'sleep'), \
-                contextlib.redirect_stderr(io.StringIO()):
-            location = sdk.ensure_flutter(self.version, self.env, self.cache)
-        self.assertEqual(location, self.cache / self.version)
-        self.assertEqual(manifest_calls, 2)
-        self.assertEqual(ranges, [None, f'bytes={cut1}-', f'bytes={cut2}-'])
-
-    def test_resume_handles_200_fallback_and_rejects_bad_range_or_404(self):
-        import ssl
-        from urllib.error import HTTPError
-
-        payload = self.archive(self.version)
-        digest = hashlib.sha256(payload).hexdigest()
-        manifest_url = sdk.BASE_URL + 'releases_linux.json'
-        archive_url = sdk.BASE_URL + self.release_path
-        manifest = json.dumps({'releases': [{
-            'version': self.version, 'channel': 'stable', 'dart_sdk_arch': 'x64',
-            'archive': self.release_path, 'sha256': digest,
-        }]}).encode()
-        cut = max(1, len(payload) // 2)
-
-        class Resp(io.BytesIO):
-            def __init__(self, url, body, status=200, headers=None, drop=False):
-                super().__init__(body)
-                self._url = url
-                self.status = status
-                self.headers = headers or {}
-                self._drop = drop
-
-            def geturl(self):
-                return self._url
-
-            def read(self, size=-1):
-                chunk = super().read(size)
-                if not chunk and self._drop:
-                    self._drop = False
-                    raise ssl.SSLEOFError('drop')
-                return chunk
-
-        # 1) Server ignores Range and replies 200 with full body -> clean restart & install.
-        step = 0
-
-        def fallback_200(target, *, timeout):
-            nonlocal step
-            url = target if isinstance(target, str) else target.full_url
-            if url == manifest_url:
-                return Resp(url, manifest)
-            step += 1
-            if step == 1:
-                return Resp(url, payload[:cut], 200, {'Content-Length': str(len(payload))}, drop=True)
-            return Resp(url, payload, 200, {'Content-Length': str(len(payload))})
-
-        cache_ok = self.root / 'cache-200'
-        with mock.patch.object(sdk, 'urlopen', side_effect=fallback_200), \
-                mock.patch.object(sdk.time, 'sleep'), \
-                contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(sdk.ensure_flutter(self.version, self.env, cache_ok), cache_ok / self.version)
-        self.assertEqual(step, 2)
-
-        # 2) ETag swap on 206 is rejected without publishing.
-        etag_step = 0
-
-        def swapped_etag(target, *, timeout):
-            nonlocal etag_step
-            url = target if isinstance(target, str) else target.full_url
-            if url == manifest_url:
-                return Resp(url, manifest)
-            etag_step += 1
-            if etag_step == 1:
-                return Resp(url, payload[:cut], 200, {'Content-Length': str(len(payload)), 'ETag': '"a"'}, drop=True)
-            return Resp(url, payload[cut:], 206,
-                        {'Content-Range': f'bytes {cut}-{len(payload) - 1}/{len(payload)}', 'ETag': '"b"'})
-
-        with mock.patch.object(sdk, 'urlopen', side_effect=swapped_etag), \
-                mock.patch.object(sdk.time, 'sleep'), \
-                contextlib.redirect_stderr(io.StringIO()):
-            with self.assertRaisesRegex(sdk.SDKError, 'changed mid-download'):
-                sdk.ensure_flutter(self.version, self.env, self.cache)
-        self.assertFalse((self.cache / self.version).exists())
-
-        # 3) HTTP 404 is not retried.
-        calls_404 = 0
-
-        def missing(target, *, timeout):
-            nonlocal calls_404
-            url = target if isinstance(target, str) else target.full_url
-            if url == manifest_url:
-                return Resp(url, manifest)
-            calls_404 += 1
-            raise HTTPError(url, 404, 'Not Found', {}, io.BytesIO())
-
-        with mock.patch.object(sdk, 'urlopen', side_effect=missing), \
-                mock.patch.object(sdk.time, 'sleep'), \
-                contextlib.redirect_stderr(io.StringIO()):
-            with self.assertRaises(sdk.SDKError):
-                sdk.ensure_flutter(self.version, self.env, self.cache)
-        self.assertEqual(calls_404, 1)
+        self.assertIn('log unavailable', ci_dispatch.failed_log('Keshab1997/fixture', 42, fetch=boom))
+        self.assertIn('empty log', ci_dispatch.failed_log('Keshab1997/fixture', 42,
+                                                          fetch=lambda path: ''))
 
 
-class AuditSecretTests(unittest.TestCase):
-    """The fleet audit must report a leak, not a template a repo tracks on purpose."""
+class LaneDocTests(unittest.TestCase):
+    """The docs must describe one lane: attached worker pushes, Captain runs CI."""
 
-    def classify(self, path, text):
-        with mock.patch.object(audit, 'file_text', return_value=text):
-            return audit.secret_is_real('Keshab1997/fixture', path, 'main')
+    docs = Path(__file__).parent
 
-    def test_key_material_is_always_a_finding(self):
-        for path in ('android/app/upload-keystore.jks', 'ios/fastlane/appstore.p8',
-                     'secrets/id_rsa', 'server/tls.pem'):
-            self.assertTrue(self.classify(path, None), path)
+    def test_fast_lane_states_the_one_lane(self):
+        text = (self.docs / 'FASTLANE.md').read_text()
+        for needle in ('There is **one lane**', 'git push origin HEAD',
+                       'AGENT <W> PUSHED', '--ref <arena/...> --watch 900 --logs',
+                       'Workers CI কখনো dispatch করে না'):
+            self.assertIn(needle, text)
 
-    def test_real_firebase_key_is_a_finding(self):
-        text = ('{"client":[{"api_key":[{"current_key":'
-                '"AIzaSyBUp08GG5QRnX58hQTGalTGjiBhWADKtZg"}]}]}')
-        self.assertTrue(self.classify('android/app/google-services.json', text))
+    def test_worker_starter_is_self_contained(self):
+        text = (self.docs / 'WORKER_START_PROMPT.md').read_text()
+        for needle in ('git push origin HEAD', 'AGENT <W> PUSHED',
+                       'Never `flutter analyze`, full `flutter test`'):
+            self.assertIn(needle, text)
+        for gone in ('gh_app.py connect', 'fetch-brief', 'Option B'):
+            self.assertNotIn(gone, text)
 
-    def test_empty_env_template_is_not_a_leak(self):
-        self.assertFalse(self.classify('flutter_app/.env', ''))
-        self.assertFalse(self.classify('flutter_app/.env', '# tracked on purpose: no values\n'))
+    def test_no_doc_points_at_a_removed_tool_or_second_lane(self):
+        removed = ('worker_lane', 'flutter_sdk', 'audit_fleet', 'fleet_bump', 'worker_up.sh',
+                   'PROMPT-FOR-NEW-AGENT', 'AGENT_PROMPT_COPY', 'RESUME.md',
+                   'LEGACY_WORKER_BRIEF', 'captain/examples', 'vault.py', 'Option B',
+                   'Device Flow is primary', 'fetch-brief')
+        for path in [*self.docs.glob('*.md'), *self.docs.parent.glob('*.md')]:
+            text = path.read_text()
+            for name in removed:
+                self.assertNotIn(name, text, f'{path.name} still references {name}')
 
-    def test_env_with_a_real_value_is_a_finding(self):
-        self.assertTrue(self.classify('.env', 'GEMINI_API_KEY=AIzaSyBUp08GG5QRnX58hQTGalTGjiBhWADKtZg\n'))
-
-    def test_env_placeholder_is_not_a_leak(self):
-        self.assertFalse(self.classify('.env', 'GEMINI_API_KEY=your-key-goes-here-xxxx\n'))
-
-    def test_key_properties_password_is_a_finding(self):
-        self.assertTrue(self.classify('android/key.properties', 'storePassword=hunter2hunter2hunter2\n'))
-        self.assertFalse(self.classify('android/key.properties', 'storePassword=changeme\n'))
-
-    def test_unreadable_config_is_reported_not_passed(self):
-        self.assertTrue(self.classify('android/key.properties', None))
-
-
-@unittest.skipUnless(shutil.which('git'), 'requires git')
-class DeviceFlowOrchestrationTests(unittest.TestCase):
-    """Device-Flow worker tasks: brief fetch, base_sha/base_branch chaining, and mention."""
-
-    def setUp(self):
-        tmp = tempfile.TemporaryDirectory(prefix='deviceflow-git-')
-        self.addCleanup(tmp.cleanup)
-        self.root = Path(tmp.name)
-        self.remote = self.root / 'origin.git'
-        self.seed = self.root / 'captain'
-        self.seed.mkdir()
-        self.env = work.command_env() | dict(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull,
-                                             GIT_TERMINAL_PROMPT='0', GIT_ALLOW_PROTOCOL='file')
-        self.git('init', '-q', '--bare', '-b', 'main', str(self.remote))
-        self.git('init', '-q', '-b', 'main')
-        self.git('config', 'user.name', 'Fixture')
-        self.git('config', 'user.email', 'test@example.invalid')
-        (self.seed / 'lesson.txt').write_text('lesson at main\n')
-        (self.seed / 'tool').mkdir()
-        (self.seed / 'tool' / 'preflight.py').write_text('print("ok")\n')
-        self.git('add', '--', '.')
-        self.git('commit', '-qm', 'initial')
-        self.base = self.git('rev-parse', 'HEAD')
-        self.git('remote', 'add', 'origin', str(self.remote))
-        self.git('push', '-q', 'origin', 'main')
-
-    def git(self, *args, cwd=None):
-        return subprocess.run(['git', *args], cwd=cwd or self.seed, env=self.env, check=True,
-                              capture_output=True, text=True, timeout=20).stdout.strip()
-
-    def test_standalone_chaining_on_prior_checkpoint_and_review_base_guard(self):
-        first = work.Lane(task('step-one'), self.root / 'workbench', _test_remote=str(self.remote))
-        first.start()
-        (first.dir / 'lesson.txt').write_text('step one\n')
-        first.check()
-        c1 = first.publish()['commit']
-
-        # Chaining in a fresh workbench (simulating a resumed or separate sandbox)
-        # using base_sha + base_branch stacks cleanly on c1 without merging into main.
-        second_spec = task('step-two', base_sha=c1, base_branch='agent/A/step-one',
-                           tracker='https://github.com/Keshab1997/fixture/issues/7')
-        second = work.Lane(second_spec, self.root / 'workbench2', _test_remote=str(self.remote))
-        state2 = second.start()
-        self.assertEqual(state2['base_sha'], c1)
-        self.assertEqual((second.dir / 'lesson.txt').read_text(), 'step one\n')
-        (second.dir / 'lesson.txt').write_text('step two\n')
-        second.check()
-        c2 = second.publish()['commit']
-        self.assertEqual(self.git('show', '-s', '--format=%P', c2, cwd=second.dir), c1)
-
-        reviewer = work.Lane(second_spec, self.seed, checkout=self.seed, review=True,
-                             _test_remote=str(self.remote))
-        with self.assertRaisesRegex(work.LaneError, 'Reported base'):
-            reviewer.review('agent/A/step-two', self.base, c2)
-        with contextlib.redirect_stdout(io.StringIO()) as out:
-            out.buffer = io.BytesIO()
-            reviewer.review('agent/A/step-two', c1, c2)
-        self.assertIn('step two', out.buffer.getvalue().decode())
-
-    def test_validate_task_rejects_mixed_arena_and_top_level_base(self):
-        with self.assertRaisesRegex(work.LaneError, 'not both'):
-            work.validate_task(task('mixed', base_sha=self.base, arena={'branch': 'auto', 'base_sha': None}))
-        with self.assertRaisesRegex(work.LaneError, 'Invalid branch ref'):
-            work.validate_task(task('bad-ref', base_branch='feature/nope'))
-        with self.assertRaisesRegex(work.LaneError, 'GitHub issue URL'):
-            work.validate_task(task('bad-tracker', tracker='https://example.com/issues/1'))
-
-    def test_fetch_brief_verifies_ancestry_and_writes_validated_files(self):
-        import base64
-        brief_sha = 'a' * 40
-        spec = task('briefed-task', base_sha=None,
-                    tracker='https://github.com/Keshab1997/fixture/issues/12')
-        url = f'https://github.com/Keshab1997/fixture/blob/{brief_sha}/docs/agent-briefs/b1/briefed-task/BRIEF.md'
-
-        def fake_api(method, path, data=None):
-            if path.startswith('/repos/Keshab1997/fixture/compare/'):
-                return {'status': 'ahead'}
-            if 'BRIEF.md' in path:
-                return {'encoding': 'base64', 'content': base64.b64encode(b'# Brief\n').decode()}
-            if 'task.json' in path:
-                return {'encoding': 'base64', 'content': base64.b64encode(json.dumps(spec).encode()).decode()}
-            raise AssertionError(path)
-
-        repo, sha, batch, slug = work.parse_brief_url(url)
-        inbox, parsed = work.fetch_brief(repo, sha, batch, slug, root=self.root / 'wb',
-                                         worker='A', api_fn=fake_api)
-        self.assertEqual(parsed, spec)
-        self.assertEqual((inbox / 'BRIEF.md').read_text(), '# Brief\n')
-        self.assertEqual(json.loads((inbox / 'task.json').read_text()), spec)
-
-        # Reject brief commits not on captain/briefs/<batch>
-        with self.assertRaisesRegex(work.LaneError, 'not on captain/briefs/b1'):
-            work.fetch_brief(repo, sha, batch, slug, root=self.root / 'wb',
-                             api_fn=lambda m, p, d=None: {'status': 'diverged'})
-
-    def test_mention_posts_once_and_deduplicates_retries(self):
-        spec = task('mention-task', tracker='https://github.com/Keshab1997/fixture/issues/9')
-        lane = work.Lane(spec, self.root / 'workbench', _test_remote=str(self.remote))
-        with self.assertRaisesRegex(work.LaneError, 'Task is not started'):
-            lane.mention(api_fn=lambda *a, **k: [])
-        lane.start()
-        (lane.dir / 'lesson.txt').write_text('ready for mention\n')
-        lane.check()
-        done = lane.publish()
-        posted = []
-
-        def fake_api(method, path, data=None):
-            if method == 'GET':
-                return list(posted)
-            if method == 'POST':
-                comment = {'body': data['body'],
-                           'html_url': 'https://github.com/Keshab1997/fixture/issues/9#issuecomment-101'}
-                posted.append(comment)
-                return comment
-            raise AssertionError((method, path))
-
-        url1, created1 = lane.mention(brief_url='https://github.com/Keshab1997/fixture/blob/' + 'b' * 40 + '/docs/agent-briefs/b1/mention-task/BRIEF.md',
-                                      api_fn=fake_api)
-        self.assertTrue(created1)
-        self.assertEqual(len(posted), 1)
-        self.assertIn('@Keshab1997', posted[0]['body'])
-        self.assertIn(done['commit'], posted[0]['body'])
-
-        url2, created2 = lane.mention(api_fn=fake_api)
-        self.assertFalse(created2)
-        self.assertEqual(url1, url2)
-        self.assertEqual(len(posted), 1)
+    def test_template_check_shapes_match_the_validator(self):
+        text = (self.docs / 'WORKER_BRIEF_TEMPLATE.md').read_text()
+        block = text.split('## `task.json`', 1)[1].split('```json\n', 1)[1].split('\n```', 1)[0]
+        data = json.loads(block)
+        self.assertIn('{{REPO}}', data['repo'])          # a template, not a literal task
+        self.assertEqual(set(data['check']), {'kind'})
+        self.assertEqual(data['arena'], {'branch': 'auto', 'base_sha': None})

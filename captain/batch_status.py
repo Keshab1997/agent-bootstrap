@@ -50,7 +50,8 @@ def api(path: str, timeout: int = 40):
 
 
 def refs(repo: str, prefix: str) -> list[dict]:
-    data = api(f"/repos/{repo}/git/matching-refs/heads/{prefix}") or []
+    # A branch prefix that contains a slash comes back as refs/heads/<prefix>/...
+    data = api(f"/repos/{repo}/git/matching-refs/heads/{prefix.rstrip('/')}") or []
     out = []
     for r in data:
         ref = r.get("ref", "")

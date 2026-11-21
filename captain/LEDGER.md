@@ -15,17 +15,15 @@ sha | status | integration_sha | history`.
   Captain has verified. Reconcile with `python3 captain/batch_status.py`
   (compares every ledger sha against the live `arena/*` tips, checks tracker
   mentions and the latest CI runs). A tip that moved past the ledger means an
-  unreviewed checkpoint — run `worker_lane.py review` before trusting it.
+  unreviewed checkpoint — diff `base..tip` and run CI on that branch before
+  trusting it.
 - One entry per live worker task (`repo`+`batch`+`worker`+`task` is the
   key). Checkpoints accumulate in `history`; never edit `history` by hand.
 - Statuses: `assigned → pushed → verified → review → landed`, plus
   `blocked` / `bounced`. Record `integration_sha` when the change lands on
   `main`.
-- **Auto-record:** a passing `worker_lane.py review` appends the verified
-  checkpoint by itself when `captain/LEDGER.json` exists and holds an entry
-  for that repo/worker/task (best-effort — a missing file or entry never
-  fails the review). Landing still needs the manual
-  `checkpoint --status landed --integration-sha …` call.
+- **Record by hand:** add the checkpoint with `ledger.py checkpoint` right after
+  you verify the branch, and `--status landed --integration-sha …` when it lands.
 
 ## Commands
 

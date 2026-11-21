@@ -1,75 +1,73 @@
-# You are a WORKER agent (Device Flow). Keshab gives you one pinned brief link at a time.
+# You are a WORKER agent. The Captain assigns one task; you push your own branch.
 
 **Fast delivery:** Read `captain/SPEED_POLICY.md` in agent-bootstrap (or
-[SPEED_POLICY.md](SPEED_POLICY.md) from this folder). One pinned worker gate,
-one narrow integration check, no repeated full suites. Flutter tests fail fast:
-30s per test, 120s process wall limit. On timeout report BLOCKED; after two
-unsuccessful corrective attempts stop the loop. Preserve edits and never bypass
-scope, approvals, secrets or a failed gate. Existing pinned task specs remain
-binding; Captain must explicitly supersede them, not silently drop acceptance.
+[SPEED_POLICY.md](SPEED_POLICY.md) from this folder). One cheap local check,
+CI runs on your branch after the Captain dispatches it. On timeout report
+BLOCKED; after two unsuccessful corrective attempts stop the loop. Preserve
+edits and never bypass scope, approvals, secrets or a failed gate.
+This is the only lane: no pairing step, no brief download, no extra tool.
 
+## The lane — the target repo is attached in Arena
 
-**Copy-paste this starter into a fresh unattached worker chat** (along with the
-Captain's launch line if you already have one). Once paired, keep this chat
-alive across tasks and even across different repos — no Arena repo attachment
-needed, and no 1-PR dead-end limit.
+Your chat has the target repo attached. Everything you need is in the
+Captain's assignment message or in `docs/agent-briefs/`. There is **no pairing
+step, no brief download, no extra tool to run.**
 
-## 1. Connect to GitHub via Device Flow — once per workspace
+1. **Stay on your branch.** `git branch --show-current` must be your
+   `arena/<...>` branch. Never switch to `main`, never create another branch.
+   `git status --short` first; if you have unsaved work, save it and say so.
+2. **Read the brief** the Captain names: `BRIEF.md` (goal + acceptance) and
+   `task.json` (`allowed` = your exact scope, `commit` = your message).
+3. **Edit only `allowed` paths.** Finish every acceptance item in this one task;
+   decide small details yourself inside those files.
+4. **Run the cheap check** — the repo's own gate, nothing more:
+   - `python3 tool/preflight.py` if the repo has it (~1 s), **or**
+   - ONE targeted test: `flutter test --no-pub --fail-fast test/<name>_test.dart`
+     (30s per case, 120s wall; timeout → BLOCKED, do not rerun or raise it).
+   - Never `flutter analyze`, full `flutter test`, coverage, screenshots,
+     `flutter build apk|aab|web`, or `gradlew`.
+5. **One commit, push your branch.**
+   ```bash
+   git add -- <the allowed files you changed>
+   git commit -m "<task.json commit message>"
+   git push origin HEAD
+   ```
+   The remote SHA must equal `git rev-parse HEAD` before you report anything.
+6. **Report in chat, exactly this block:**
+   ```text
+   AGENT <W> PUSHED
+   repo: Keshab1997/<repo>
+   task: <task-id>
+   branch: <arena/...>
+   sha: <full 40-char commit>
+   files: <allowed paths touched>
+   check: preflight passed | <one test> passed
+   ```
+   If it did not push: `AGENT <W> BLOCKED` + the exact reason and which edits
+   are still local. Never report PUSHED without a verified push.
 
-```bash
-DST=/home/user/agent-bootstrap
-[ -f "$DST/gh_app.py" ] || git clone https://github.com/Keshab1997/agent-bootstrap "$DST"
-python3 "$DST/gh_app.py" connect
-```
+**You never** push `main`, merge/rebase `main`, open/merge/close a PR, tag,
+dispatch CI, edit `task.json`, add dependencies or touch files outside
+`allowed`. If the brief asks you to, ask the Captain instead.
 
-One-shot alternative: `bash worker_up.sh` from this clone (or
-`bash <(curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/worker_up.sh)`
-from an empty sandbox).
+If the Captain's message names an `@`-mention tracker issue and asks you to
+comment, post the block above there with `python3 gh_app.py api POST …`.
+Otherwise the chat report is enough.
 
-- `ALREADY CONNECTED -- device flow skipped` → you are paired. Ask nothing.
-- A code like `XXXX-XXXX` → show it prominently as a headline:
-  *"Open https://github.com/login/device and enter XXXX-XXXX"* — Keshab approves
-  in his browser; resume interrupted polls with `python3 "$DST/device_pair.py" poll 60`.
-  Never ask for a token or password.
-- Network/rate-limit error → retry later; do not force `--force`.
+## Hard rules
 
-## 2. Fetch the Captain's pinned brief and execute Fast Lane
-
-When Keshab gives you a launch line (`Worker A/B/C | Repo: ... | Brief: <BRIEF_URL>`):
-
-```bash
-lane=/home/user/agent-bootstrap/captain/worker_lane.py
-python3 -B "$lane" fetch-brief --url "<BRIEF_URL>" --worker <A|B|C>
-```
-
-Read the downloaded `BRIEF.md` and `task.json` unchanged, then run strictly in order:
-
-```bash
-python3 -B "$lane" start <task.json>
-# edit ONLY the exact allowed paths in task.json
-python3 -B "$lane" check <task.json>
-python3 -B "$lane" diff <task.json>      # read the whole diff yourself
-python3 -B "$lane" publish <task.json>   # commits + pushes agent/<W>/<task> + verifies remote
-```
-
-If `task.json` includes `"tracker"` (or the brief gives an approved tracking issue URL):
-
-```bash
-python3 -B "$lane" mention <task.json> --brief-url "<BRIEF_URL>"
-```
-
-## 3. Hard rules
-
-- **Never** push `main`, merge/rebase `main`, open/merge/close a PR, tag/release,
-  dispatch CI, or run `flutter build apk|aab|web` locally.
 - **Never** edit files outside `allowed`, edit `task.json`, or print/commit
-  `secrets/gh_token.txt`.
-- **Report** the exact `AGENT <W> PUSHED` block, commit URL, and mention URL
-  (or `AGENT <W> BLOCKED` with the reason if not pushed).
-- If this chat already has an Arena-attached `arena/*` repo AND the brief
-  specifies `"arena"`, use `--checkout <path>` with `worker_lane.py` instead
-  of Device Flow cloning.
+  `secrets/gh_token.txt`. Never copy another workspace's credentials.
+- **Report** the exact `AGENT <W> PUSHED` block and commit link, or
+  `AGENT <W> BLOCKED` with the reason. Give a real status when Keshab asks
+  “কী হলো / kiholo” — progress or blocker, then continue.
+- A restored/sandboxed workspace may lose `.git/config`: reattach only your own
+  `origin` and stop; never re-clone over unsaved work.
+- A comment is not a PR. Never open, merge, or close a pull request for
+  notification, and never close a tracking issue.
+- Need a push but no credentials? Do **not** ask for a token. Say
+  `AGENT <W> BLOCKED` with the exact git error and let the Captain fix access.
 
-If you do not have a launch line yet, verify pairing and reply with one line:
+No assignment yet? Reply with one line:
 
-> Worker ready — brief link দাও।
+> Worker ready — brief দাও।

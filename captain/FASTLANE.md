@@ -1,140 +1,137 @@
-# Worker Fast Lane: Device Flow brief → verified checkpoint
+# Fast Lane: Captain assigns → worker pushes its branch → Captain runs CI
 
 **Fast delivery:** Read `captain/SPEED_POLICY.md` in agent-bootstrap (or
-[SPEED_POLICY.md](SPEED_POLICY.md) from this folder). One pinned worker gate,
-one narrow integration check, no repeated full suites. Flutter tests fail fast:
+[SPEED_POLICY.md](SPEED_POLICY.md) from this folder). One cheap local check, one
+CI run on the worker's branch, no repeated full suites. Flutter tests fail fast:
 30s per test, 120s process wall limit. On timeout report BLOCKED; after two
-unsuccessful corrective attempts stop the loop. Preserve edits and never bypass
-scope, approvals, secrets or a failed gate. Existing pinned task specs remain
-binding; Captain must explicitly supersede them, not silently drop acceptance.
-
+unsuccessful corrective attempts stop the loop. Preserve
+edits and never bypass scope, approvals, secrets or a failed gate.
 
 [বাংলায় শুরু করুন](HOW_TO_START_BN.md) · [Worker starter](WORKER_START_PROMPT.md) · [GitHub briefs](GITHUB_BRIEFS.md) · [Captain playbook](CAPTAIN_PROMPT.md)
 
-**Device Flow (`gh_app.py connect`) is the primary worker mode.** Workers do
-**not** need to attach the target repo in Arena Agent Mode, have no 1-PR
-dead-end limit, and can keep one paired chat alive across tasks and repos.
-(Optional Arena-attached `arena/*` chats remain supported when a brief
-specifies `"arena"`.)
+There is **one lane**. No pairing, no second mode, no state machine to learn.
 
-| Worker chat | Action |
-|---|---|
-| Unattached chat paired via Device Flow (`gh_app.py status` → `PAIRED`) | Primary lane: run `fetch-brief` → `start` → edit → `check` → `diff` → `publish` → `mention` on `agent/<W>/<task>`. |
-| Attached chat with `"arena"` in `task.json` | Optional linked mode: pass `--checkout <repo_root>` to `worker_lane.py`; stay on its `arena/*` branch and never open/merge/close its linked PR. |
-| Task already in flight under an earlier brief | Finish or reconcile in that original lane with the same scope, branch and base. |
-
-## 1. Boot & pair once per worker workspace
-
-Keep `agent-bootstrap` at `/home/user/agent-bootstrap`. Run `bash worker_up.sh`
-(or `python3 /home/user/agent-bootstrap/gh_app.py connect` if already cloned):
-
-- If `ALREADY CONNECTED -- device flow skipped`, ask Keshab nothing.
-- If a code like `XXXX-XXXX` prints, show it prominently (`Open https://github.com/login/device and enter XXXX-XXXX`); resume interrupted polls with `python3 /home/user/agent-bootstrap/device_pair.py poll 60`.
-- Fast-forward clean `main` before each new batch (`git -C /home/user/agent-bootstrap pull --ff-only origin main`).
-
-## 2. Fetch the Captain's pinned brief
-
-The Captain's launch line gives a commit-pinned `BRIEF.md` URL. Fetch and
-verify it in one command (downloads `BRIEF.md` and `task.json` into
-`~/agent-workbench/inbox/...` and checks that the commit belongs to
-`captain/briefs/<batch>`):
-
-```bash
-lane=/home/user/agent-bootstrap/captain/worker_lane.py
-python3 -B "$lane" fetch-brief --url "<BRIEF_URL>"
+```text
+Keshab: repo attach করে worker chat খোলে
+   ↓
+Captain: BRIEF.md + task.json publish করে, একটাই paste-করা message দেয়
+   ↓
+Worker: brief পড়ে → allowed file edit → cheap check → নিজের arena/* branch-এ commit + push → PUSHED report
+   ↓
+Captain: branch fetch → diff review → CI চালায় (branch ref) → ঠিক আছে হলে main-এ land; লাল হলে নিজেই fix
 ```
 
-Read `BRIEF.md` and keep `task.json` unchanged. Do not edit brief files.
+| Who | Does exactly this | Never |
+|---|---|---|
+| Keshab | worker chat-এ target repo attach করেন, Captain-এর message paste করেন, `PUSHED` রিপোর্ট Captain-কে দেন | token, file বা পুরো brief টানা-টানি |
+| Worker | `git pull --ff-only`, `allowed` file edit, এক cheap check, commit, `git push` নিজের branch-এ, `PUSHED` block | full suite/analyze/build, CI dispatch, `main` push, PR merge/close, task.json edit |
+| Captain | brief লেখা, cheap-gate প্রি-ওয়ার্ম, diff review, **CI dispatch + লাল হলে fix**, integration, পরের বড় task | অপেক্ষা করে বসে থাকা, micro-task, একই file দুই worker-কে দেওয়া |
 
-## 3. Per task: start → edit → check → diff → publish → mention
+## 1. Worker chat
 
-Set `task` to the downloaded `task.json` path (pass `--checkout "$checkout"`
-only when the brief specifies `"arena"`):
+Keshab শুধু দুটো জিনিস করেন: Arena UI-তে **target repo attach** + Captain-এর
+পাঠানো **assignment message** paste। Agent-কে আর কিছু বলতে হয় না।
 
-```bash
-python3 -B "$lane" start "$task"
-```
-
-Use the printed `workdir` (`~/agent-workbench/repos/<W>/<repo>` in Device Flow
-mode); read its `AGENTS.md` if present. Any direct-to-`main` / `tool/agent_loop.py`
-rule in `AGENTS.md` is for independent work only — for a Captain task, follow
-the brief's JSON gate and `worker_lane.py`.
-
-Edit **only** the exact `allowed` paths. Finish every acceptance item before
-`check`, deciding details inside those paths yourself. Do not stage, commit by
-hand, touch the brief files, edit `main`, or switch branches. Run in order,
-and **read** the diff before publishing:
+Worker agent যা করে, ঠিক এই ক্রমে:
 
 ```bash
-python3 -B "$lane" check "$task"
-python3 -B "$lane" diff "$task"
-python3 -B "$lane" publish "$task"
+# 1) repo already attached: confirm branch, never switch off it
+git branch --show-current          # arena/<...> — এই branch-এই থাকো
+git status --short                 # নিজের unsaved কাজ থাকলে আগে জানাও
+git pull --ff-only                 # শুধু clean থাকলে; conflict হলে থামো
+
+# 2) brief পড়ো (Captain-এর message-এ path দেওয়া থাকে)
+cat docs/agent-briefs/<batch>/<task>/BRIEF.md
+cat docs/agent-briefs/<batch>/<task>/task.json   # allowed list = তোমার সীমা
+
+# 3) allowed file-গুলো edit করে cheap check
+python3 tool/preflight.py          # ~1s; না থাকলে task.json-এর একটাই test
+
+# 4) One commit, push your branch (arena/*; never main)
+git add -- <allowed files only>
+git commit -m "<task.json-এর commit message>"
+git push origin HEAD
 ```
 
-If `task.json` has `"tracker"` (or the brief gives an approved tracking issue URL):
+`tool/preflight.py` নেই? তবে শুধু **এক** টার্গেটেড test:
+`flutter test --no-pub --fail-fast <task.json-এর test>` (30s per test, 120s wall)।
+Build (`flutter build`, `gradlew`), `flutter analyze`, full suite কখনো নয়।
+Timeout হলে থামো, rerun নয়।
 
-```bash
-python3 -B "$lane" mention "$task" --brief-url "<BRIEF_URL>"
+তারপর chat-এ ঠিক এই block দাও:
+
+```text
+AGENT <W> PUSHED
+repo: Keshab1997/<repo>
+task: <task-id>
+branch: <arena/...>
+sha: <full 40-char commit>
+files: <allowed paths touched>
+check: preflight passed | <one test> passed
 ```
 
-`mention` checks for existing comments to avoid duplicates and posts
-`@Keshab1997 — checkpoint ready for review` with the verified `AGENT <W> PUSHED`
-block and commit link via `gh_app.py`. If no tracker is configured, return the
-`PUSHED` block and commit URL directly in the worker chat. Report `BLOCKED`
-with the reason if the code could not be pushed.
+Push না হলে: `AGENT <W> BLOCKED` + exact reason + কী কী edit পড়ে আছে।
+কোনো ফল নেই এমন "PUSHED" কখনো নয়।
 
-Interrupted or resumed in a restored sandbox? Keep the same `task.json`,
-workbench (`~/agent-workbench`), and `agent-bootstrap` clone. In Device Flow
-mode, `worker_lane.py` restores `.git/config` automatically from `.origin.json`
-when Arena snapshots drop it between turns. In optional Arena-linked mode,
-`worker_lane.py` fast-forwards an ancestor `HEAD` cleanly when safe. Never run
-manual `git reset`.
+## 2. Captain per checkpoint
 
-### Check profiles
-
-| `check` value | Runs |
-|---|---|
-| `{"kind":"preflight"}` | `python3 -B tool/preflight.py`; suitable only when it covers the task |
-| `{"kind":"flutter","version":"3.50.0","test":"test/home_screen_test.dart"}` | Exact SDK, locked pub get, changed-file format, preflight, then ONE test file with `--fail-fast --timeout 30s`; 120s test-process wall limit |
-| `{"kind":"pytest","target":"tests"}` | `python3 -m pytest -q tests` (or one named Python test under `test/` or `tests/`) |
-| `{"kind":"selftest"}` | `python3 -B selftest.py` |
-
-Use the actual repo's gate. The Flutter version shown is an example, **not** a
-global default. Pin a compatible stable SDK, not the minimum. The lockfile
-must not change. No builds or full test battery by default.
-
-On Linux x86-64 a cold Flutter SDK is downloaded from Google's official manifest
-with SHA-256 verification under `/var/tmp/agent-bootstrap-flutter-<uid>`. If a
-worker sandbox blocks outbound TLS to `storage.googleapis.com`, report `BLOCKED`;
-the Captain can publish a newly pinned `task.json` with `{"kind":"preflight"}`
-and run the Flutter gate during Captain review before landing.
-
-## 4. Captain: verify, review, then assign the next task
-
-1. Keep a ledger **outside app repos**: `captain/ledger.py` writes to
-   `captain/LEDGER.json` (gitignored) and `captain/batch_status.py` diffs the
-   ledger against live GitHub `agent/*` + `arena/*` refs, tracker mentions, and
-   CI runs in one call; see [LEDGER.md](LEDGER.md).
-2. In a separate Captain checkout, verify the exact remote ref, base, and scope
-   using the original `task.json` from the pinned docs commit:
+1. **Review the range, not the whole branch:** `git fetch origin <arena/...>`
+   → `git diff --name-status $base..$tip` must equal the `allowed` list, no
+   secrets, no version bumps, then read the diff (`git diff $base..$tip`).
+2. **CI on the worker branch** (a push alone does not run it):
 
    ```bash
-   python3 -B "$lane" \
-     --checkout "$captain_repo" --branch "$branch" --base "$base" --tip "$tip" \
-     review "$original_task_json"
+   python3 captain/ci_dispatch.py Keshab1997/<repo> --ref <arena/...> --watch 900 --logs
    ```
 
-   Once this passes, publish the worker's next big brief right away (Speed rule 5):
-   - In Device Flow mode, omit `"base_sha"` to start from current `main`, or
-     set `"base_sha": "<verified_tip>"` (and `"base_branch": "agent/<W>/<prev_task>"`
-     if not yet integrated into `main`) to stack on the unmerged checkpoint.
-   - Then inspect the patch, run the integration gate on `main`, and integrate
-     the reviewed `base..tip` diff.
+   `--watch` লম্বা হলে background process-এ চালাও, আর কাজ চালিয়ে যাও।
+   Workers CI কখনো dispatch করে না।
+3. **লাল হলে:** প্রথম failing step/log পড়ো (`--logs` ওটাই দেয়), তারপর —
+   - ছোট/স্পষ্ট ভুল (typo, import, formatting, একটা assertion): **Captain নিজেই**
+     নিজের integration commit-এ ঠিক করে land করে।
+   - worker-এর কাজের ধরন বদলাতে হবে: **একটাই** corrective task, ভেতরে exact
+     failing step, log-এর প্রথম ২০ লাইন আর বাকি acceptance item দিয়ে।
+     নতুন task ID; পুরোনোটা supersede করো, silently বদলিও না।
+4. **সবুজ হলে:** reviewed diff `main`-এ land করো (§3), ledger-এ
+   `checkpoint --status landed`।
+5. **পরের বড় task সঙ্গে সঙ্গে publish করো** (worker অপেক্ষা করবে না):
+
+| পরের task কীসের উপর | task.json-এ |
+|---|---|
+| `main`-এ আগের কাজ land হয়ে গেছে | `"arena": {"branch": "auto", "base_sha": null}` |
+| আগের checkpoint এখনো merge হয়নি, একই worker-এর lane | `"arena": {"branch": "auto", "base_sha": "<verified tip>"}` |
+| অন্য worker-এর unmerged কাজ দরকার | **করো না** — আগে সেটা land করো, বা নিজে prerequisite লিখে দাও |
+
+## 3. Land the reviewed diff
+
+```bash
+set -euo pipefail
+test -z "$(git status --porcelain)"
+git switch main && git pull --ff-only origin main
+git switch -c "captain/review/<slug>"
+git diff --binary --full-index --no-ext-diff --no-textconv "$base" "$tip" -- | git apply --3way --index
+git diff --cached --check
+git diff --cached                # read it once more
+python3 tool/preflight.py        # repo's own cheap gate
+git commit -m "fix(scope): reviewed worker change"
+git switch main && git merge --ff-only captain/review/<slug> && git push origin HEAD:refs/heads/main
+```
+
+Branch rules থাকলে PR খোলো; conflict হলে জোর করো না। `arena/*` branch মুছো না —
+worker chat সেটার উপরেই চলছে।
+
+## 4. Ledger: one line per checkpoint
+
+`python3 captain/ledger.py upsert …` at assignment, `checkpoint …` on
+verify/land (gitignored `captain/LEDGER.json`, schema in [LEDGER.md](LEDGER.md)).
+`python3 captain/batch_status.py` এক কলে ledger vs live `arena/*` tips, tracker
+mentions আর CI runs দেখায় — "কী হলো" প্রশ্নের সবচেয়ে দ্রুত উত্তর।
+
+Brief লেখার আগে `python3 captain/task_spec.py <task.json>` দিয়ে scope যাচাই
+করো; ভুল path, shared surface বা secret-ওয়ালা path ধরা পড়বে।
 
 ## 5. Finalize only when explicitly asked
 
-**`Finalize batch <id>`** is a Captain decision, not a worker command. Freeze
-new assignments, verify every expected checkpoint, and show what's landed,
-pending, and blocked. In Device Flow mode there are no terminal linked PRs;
-you can integrate remaining reviewed `agent/*` commits onto `main` (or into a
-single Captain PR if branch rules require PRs).
+**`Finalize batch <id>`** — Captain সিদ্ধান্ত, worker command নয়। নতুন assignment
+বন্ধ, প্রতিটা checkpoint verified/blocked কিনা দেখাও, কী landed আর কী বাকি এক
+টেবিলে দাও। merging না হয়ে থাকা reviewed কাজ Captain-এর PR-এ শেষ করো।

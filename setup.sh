@@ -98,12 +98,10 @@ elif command -v git >/dev/null 2>&1; then
     || { say "  git clone failed, falling back to raw download"
          fetch "$RAW/gh_app.py"     "$DEST/gh_app.py"
          fetch "$RAW/app-meta.json" "$DEST/app-meta.json"
-         fetch "$RAW/vault.py"       "$DEST/vault.py" 2>/dev/null || true
          fetch "$RAW/device_pair.py" "$DEST/device_pair.py" 2>/dev/null || true; }
 else
   fetch "$RAW/gh_app.py"     "$DEST/gh_app.py"
   fetch "$RAW/app-meta.json" "$DEST/app-meta.json"
-  fetch "$RAW/vault.py"       "$DEST/vault.py" 2>/dev/null || true
   fetch "$RAW/device_pair.py" "$DEST/device_pair.py" 2>/dev/null || true
   say "  downloaded raw files"
 fi

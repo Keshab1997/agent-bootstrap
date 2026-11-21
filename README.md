@@ -27,11 +27,11 @@ curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/set
 
 ## For AI agents — read this first
 
-Both Captains and Workers connect with **GitHub Device Flow** (`gh_app.py connect`)
-and reuse their saved workspace sessions across turns, tasks, and repos.
-(Optional Arena-attached mode: if a worker chat already has the target repo
-attached in Arena and the brief specifies `"arena"`, follow [Fast Lane](captain/FASTLANE.md)
-with `--checkout`.)
+**Flow:** workers attach the target repo in Arena, the Captain sends one
+assignment message, the worker pushes its own `arena/*` branch, and the Captain
+runs CI and lands it. The **Captain** also connects with GitHub Device Flow
+(`gh_app.py connect`) so it can fetch branches, dispatch CI and land on `main`;
+its saved session is reused across turns and tasks.
 
 1. **Run** `python3 gh_app.py connect`. It first reuses a working token, then
    tries the saved refresh token if access expired. Successful recovery prints
@@ -82,45 +82,40 @@ No new PAT, private key, server or repository setting is needed for this update.
 
 ---
 
-## Multiple agents — GitHub briefs, Device-Flow workers
+## Multiple agents — attached repos, pushed branches, Captain-run CI
 
 Start the Captain with [`CAPTAIN_START_PROMPT.md`](CAPTAIN_START_PROMPT.md) (or `captain_up.sh`)
-and each Worker with [`captain/WORKER_START_PROMPT.md`](captain/WORKER_START_PROMPT.md) (or `worker_up.sh`).
-The Captain splits work by file into big, complete tasks (never micro-tasks),
-works its own lane in parallel, and [publishes each brief](captain/GITHUB_BRIEFS.md)
-as `BRIEF.md` and `task.json` under `docs/agent-briefs/<batch>/<task>/` on the
-**target repo's** `captain/briefs/<batch>` branch. Workers get only a short
-launch line with the repo and a commit-pinned link.
+and each Worker with [`captain/WORKER_START_PROMPT.md`](captain/WORKER_START_PROMPT.md).
 
-- **Device Flow (primary):** workers do **not** need an Arena repo attachment
-  and have no 1-PR limit. Each worker runs `worker_lane.py fetch-brief` to
-  download the brief, `start` → edit → `check` → `diff` → `publish` to push
-  `agent/<W>/<task>` (chaining with `base_sha`/`base_branch` when needed), and
-  `mention` to post `@Keshab1997` on the tracking issue. Once paired, a worker
-  chat stays reusable across tasks and repos.
-- **Optional Arena-attached mode:** if a chat already has the target repo
-  attached in Arena Agent Mode and the brief includes `"arena"`, pass
-  `--checkout` to `worker_lane.py` and keep its `arena/*` branch and linked PR
-  open until batch finalization.
-- The Captain reviews the exact `base → pushed SHA` range from a separate
-  checkout (`worker_lane.py review`) and integrates onto `main`.
+**The default flow is simple:**
 
-For apps using `flutter-builder`, workers and Captain use the target repo's
-installed preflight and pinned SDK (`worker_lane.py` handles this automatically).
-See the [Captain's builder rules](captain/CAPTAIN_PROMPT.md#how-to-use-flutter-builder).
+1. **Attach the target repo** in each worker chat (Arena UI).
+2. The Captain splits the work into big, file-disjoint tasks, publishes each
+   brief to `docs/agent-briefs/<batch>/<task>/` and pastes **one assignment
+   message** per worker (brief path, `task.json`, the commands).
+3. The worker edits only `allowed` files, runs **one cheap check**
+   (`tool/preflight.py`, or the single test in `task.json`), commits and pushes
+   **its own `arena/*` branch**, and reports `AGENT A PUSHED`.
+4. The Captain verifies `base..tip`, runs **CI on that branch**
+   (`captain/ci_dispatch.py <repo> --ref <branch> --logs`), fixes small reds
+   itself, lands green changes on `main`, and sends the next big task.
 
-**No brief copy/paste or app-file downloads/uploads between chats.** See the
-[Bengali walkthrough](captain/HOW_TO_START_BN.md).
+Workers never touch `main`, never open/merge/close PRs, never dispatch CI and
+never run builds or full suites locally — that is the Captain's job.
 
----
+That is the only lane — no pairing in the worker chat, no brief download tool,
+no second branch naming scheme. A worker that cannot push reports `BLOCKED` with
+the exact error instead of asking for a token.
+
+See the [Bengali walkthrough](captain/HOW_TO_START_BN.md),
+[Fast Lane](captain/FASTLANE.md) and [GitHub briefs](captain/GITHUB_BRIEFS.md).
 
 ## Starting a fresh agent — one paste
 
 For independent work, hand a new agent [`AGENT_START_PROMPT.md`](AGENT_START_PROMPT.md):
-pairing, the Flutter SDK step, the check-when-needed policy, the manual-CI rule
-and the sandbox's traps, all in one copy-paste block. A plain-text twin
-([`PROMPT-FOR-NEW-AGENT.txt`](PROMPT-FOR-NEW-AGENT.txt)) and a one-click-copy
-page ([`AGENT_PROMPT_COPY.html`](AGENT_PROMPT_COPY.html)) carry the same text.
+pairing, the Flutter SDK step, the check-when-needed policy, the CI rule and the
+sandbox's traps, all in one copy-paste block. It is the only copy — no derived
+twins to keep in sync.
 
 ---
 
@@ -227,43 +222,6 @@ push, PR, and run workflows.
 
 ---
 
-## Optional: `vault.py` (not used by default)
-
-This repo ships with **no credentials**, which is the safest arrangement. If you
-use [`vault.py`](vault.py), it can store a **Fine-Grained PAT** encrypted. This
-is **not** a zero-secret login: each fresh workspace still needs the passphrase
-through a secure secret-delivery mechanism. Do not put that passphrase in a
-public repo, a worker brief or chat logs. This is not required for refresh/resume
-or the branch-push workflow.
-
-Example for a separately managed vault:
-
-```bash
-python3 vault.py seal --set token --generate-passphrase     # prints a strong passphrase once
-python3 vault.py unseal --get token --to-file secrets/pat.txt
-python3 vault.py verify                                     # sanity check
-```
-
-- AES-256-CBC + PBKDF2-HMAC-SHA256 (600 000 iterations) + HMAC-SHA256,
-  encrypt-then-MAC. Output is plain base64, so **GitHub secret scanning will
-  not flag or auto-revoke it.**
-- Create a Fine-Grained PAT at *Settings → Developer settings → Personal access
-  tokens → Fine-grained tokens*.
-
-**Why a PAT and not the App refresh token?** GitHub App refresh tokens are
-**single-use and rotate**. If two agents share one, the first to refresh
-invalidates every other copy. A Fine-Grained PAT does not rotate, so it is the
-only credential suitable for a shared vault.
-
-**Passphrase hygiene**
-
-- Keep the passphrase out of git, out of chat logs, and off your GitHub account.
-- Do **not** reuse your GitHub password or any real-world password here.
-- Longer beats complex: four random unrelated words are stronger and easier to
-  remember than `P@ssw0rd123`.
-
----
-
 ## Why this repo is public
 
 A private repo would defeat the purpose: an agent in a fresh sandbox has no
@@ -333,12 +291,10 @@ agent-bootstrap/
 ├── selftest.py            ← offline test: never re-ask for authorization
 ├── app-meta.json          ← App, installation, endpoints, permissions, token policy
 ├── setup.sh               ← curl | bash one-shot installer
-├── vault.py               ← optional passphrase-encrypted token store
+├── captain_up.sh          ← one-command Captain boot
 ├── AGENT_START_PROMPT.md  ← hand this to a fresh agent session (one paste)
 ├── CAPTAIN_START_PROMPT.md ← same, for the captain of a multi-agent batch
-├── captain/               ← Fast Lane runner, exact Flutter setup, briefs, BN guide
-├── PROMPT-FOR-NEW-AGENT.txt ← same prompt as plain text
-├── AGENT_PROMPT_COPY.html ← same prompt with a one-click copy button
-├── RESUME.md              ← workspace resume guide (paths, traps, policies)
+├── NEXT_TIME_BANGLA.md    ← বাংলায় পরেরবারের গাইড
+├── captain/               ← playbooks, brief template + validator, CI + ledger tools
 └── .gitignore             ← keeps secrets/ out of git
 ```
