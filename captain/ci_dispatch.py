@@ -14,8 +14,8 @@ failures itself. Rules:
         [--ref BRANCH] [--watch SECONDS] [--logs] [--tail N]
         [--input k=v]... [--dry-run]
 
---ref accepts any branch (default main): pass the worker's arena/* or
-agent/<W>/<task> branch to verify that checkpoint before landing it.
+--ref accepts any branch (default main): pass the worker's arena/* branch to
+verify that checkpoint before landing it.
 --logs prints the tail of each failed job's log, so a failing step can be read
 in the same call instead of a second API round trip.
 

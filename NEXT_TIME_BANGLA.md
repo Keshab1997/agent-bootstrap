@@ -73,8 +73,7 @@ python3 /home/user/agent-bootstrap/device_pair.py poll 60
    `main`-এ land করে। সবুজ হলে সঙ্গে সঙ্গে পরের বড় কাজ দেয়।
 
 Worker কখনো `main`-এ push করে না, PR খোলে না, CI চালায় না, build/full suite
-চালায় না। Device Flow (`gh_app.py connect` + `worker_lane.py fetch-brief`) এখন
-শুধু **ব্যাকআপ** — যে chat-এ repo attach করা নেই, কেবল সেখানে।
+চালায় না। এটাই একমাত্র পদ্ধতি — আলাদা করে কোনো tool বা pairing লাগে না।
 
 ```text
 repo attach → Captain-এর এক message → worker নিজের arena/* branch push
@@ -113,6 +112,7 @@ python3 gh_app.py status               # check/refresh; নতুন code কখ
 python3 device_pair.py status          # pending code-এর বাকি সময়, offline
 python3 device_pair.py poll 60         # একই code resume
 python3 selftest.py                    # fake token দিয়ে offline regression tests
+python3 captain/task_spec.py task.json # brief-এর scope ঠিক আছে কি না যাচাই
 ```
 
 `PAIRED` = কাজ করা যাবে। `UNCONFIRMED` = পরে retry, নতুন approval নয়।

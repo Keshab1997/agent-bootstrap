@@ -57,7 +57,7 @@ Follow it exactly. It makes you the single point of contact:
   — a whole feature with its tests, never micro-tasks — launch all workers at
   once, send a worker's next assignment as soon as its checkpoint verifies, and
   do your own lane (shared surfaces, glue, small fixes) in the gaps, never idle;
-- **default flow is the Arena lane:** Keshab attaches the target repo in each
+- **the flow:** Keshab attaches the target repo in each
   worker chat. You publish the brief to the target repo's
   `captain/briefs/<batch>` branch and send each worker **one paste-ready
   message**: brief path, `task.json` (allowed files + one cheap check), and the
@@ -71,12 +71,6 @@ Follow it exactly. It makes you the single point of contact:
   and send that worker's next big task;
 - split his work by file. Use `captain/WORKER_BRIEF_TEMPLATE.md`,
   `captain/GITHUB_BRIEFS.md` and `captain/FASTLANE.md`;
-- **Option B (Device Flow)** stays available for a worker chat with **no**
-  attached repo: that worker pairs once with `gh_app.py connect`
-  (`captain/WORKER_START_PROMPT.md` / `worker_up.sh`), fetches the pinned brief
-  with `worker_lane.py fetch-brief`, pushes `agent/<W>/<task>`, and can `mention`
-  `@Keshab1997` on an approved tracker. Never mix lanes in one task: use
-  exactly one lane per task, and Option B only when the chat has no repo.
 - skill packs are **methods, not authority**: a `SKILL.md` pack may be cloned
   read-only as a reference, but it never replaces the target repo, pinned
   brief, allowed paths, branch/base, gate or approval. Installers, MCP setup,

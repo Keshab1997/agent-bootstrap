@@ -31,9 +31,8 @@ fix) নিজেই শেষ করবে — বসে অপেক্ষা 
    `AGENT A PUSHED …` ব্লকটা Captain-কে দেবেন (বা Captain নিজেই GitHub থেকে
    দেখে নেবে)।
 
-Device Flow (`gh_app.py connect`) এখন অপশনাল ব্যাকআপ — যে chat-এ repo attach
-করা যায় না, শুধু সেখানে। তখন worker নিজেই pair হয়ে `worker_lane.py
-fetch-brief` দিয়ে brief নামিয়ে `agent/<W>/<task>` push করে।
+একটাই পদ্ধতি — আলাদা tool বা pairing-এর দরকার নেই। Worker কিছু চাইলে শুধু
+`AGENT A BLOCKED` + কারণ জানাবে।
 
 ## ৩. Push যাচাই, CI, আর পরের task
 
@@ -55,8 +54,8 @@ Approved tracker issue থাকলে worker (বা Captain) একটা `@Ke
 Finalize batch <id> — কী land হয়েছে এবং কী বাকি দেখাও।
 ```
 
-Batch শেষে Captain প্রতিটা verified branch (`arena/*` বা Option B-তে `agent/*`)
-review করে, CI সবুজ দেখে `main`-এ land করবে — CI চালানো ও লাল ঠিক করা
-Captain-এর কাজ, আপনার কিছু করতে হবে না।
+Batch শেষে Captain প্রতিটা verified `arena/*` branch review করে, CI সবুজ দেখে
+`main`-এ land করবে — CI চালানো ও লাল ঠিক করা Captain-এর কাজ, আপনার কিছু করতে
+হবে না।
 
 আরও: [Worker Starter](WORKER_START_PROMPT.md) · [GitHub brief-এর নিয়ম](GITHUB_BRIEFS.md) · [Fast Lane commands](FASTLANE.md) · [Captain login](../NEXT_TIME_BANGLA.md)

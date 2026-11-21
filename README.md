@@ -27,12 +27,11 @@ curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/set
 
 ## For AI agents — read this first
 
-**Default flow:** workers attach the target repo in Arena, the Captain sends one
+**Flow:** workers attach the target repo in Arena, the Captain sends one
 assignment message, the worker pushes its own `arena/*` branch, and the Captain
-runs CI and lands it. **Fallback:** both Captains and Workers can also connect
-with **GitHub Device Flow** (`gh_app.py connect`) and reuse their saved workspace
-sessions across turns, tasks, and repos (Option B — for chats without an
-attached repo; see [Fast Lane](captain/FASTLANE.md)).
+runs CI and lands it. The **Captain** also connects with GitHub Device Flow
+(`gh_app.py connect`) so it can fetch branches, dispatch CI and land on `main`;
+its saved session is reused across turns and tasks.
 
 1. **Run** `python3 gh_app.py connect`. It first reuses a working token, then
    tries the saved refresh token if access expired. Successful recovery prints
@@ -104,10 +103,9 @@ and each Worker with [`captain/WORKER_START_PROMPT.md`](captain/WORKER_START_PRO
 Workers never touch `main`, never open/merge/close PRs, never dispatch CI and
 never run builds or full suites locally — that is the Captain's job.
 
-**Option B — Device Flow** (`gh_app.py connect` + `worker_lane.py fetch-brief`)
-works for a worker chat with **no** attached repo: it pairs once, fetches a
-pinned brief, pushes `agent/<W>/<task>` and can mention `@Keshab1997`. Use one
-lane per task; never both.
+That is the only lane — no pairing in the worker chat, no brief download tool,
+no second branch naming scheme. A worker that cannot push reports `BLOCKED` with
+the exact error instead of asking for a token.
 
 See the [Bengali walkthrough](captain/HOW_TO_START_BN.md),
 [Fast Lane](captain/FASTLANE.md) and [GitHub briefs](captain/GITHUB_BRIEFS.md).
@@ -293,11 +291,10 @@ agent-bootstrap/
 ├── selftest.py            ← offline test: never re-ask for authorization
 ├── app-meta.json          ← App, installation, endpoints, permissions, token policy
 ├── setup.sh               ← curl | bash one-shot installer
-├── worker_up.sh           ← one-command Worker boot (Option B)
 ├── captain_up.sh          ← one-command Captain boot
 ├── AGENT_START_PROMPT.md  ← hand this to a fresh agent session (one paste)
 ├── CAPTAIN_START_PROMPT.md ← same, for the captain of a multi-agent batch
 ├── NEXT_TIME_BANGLA.md    ← বাংলায় পরেরবারের গাইড
-├── captain/               ← playbooks, brief template, worker_lane, CI + ledger tools
+├── captain/               ← playbooks, brief template + validator, CI + ledger tools
 └── .gitignore             ← keeps secrets/ out of git
 ```

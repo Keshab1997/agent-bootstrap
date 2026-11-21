@@ -540,24 +540,22 @@ class AuthTests(unittest.TestCase):
 
 class PromptTests(unittest.TestCase):
     @unittest.skipUnless((SRC.parent / "CAPTAIN_START_PROMPT.md").exists(), "no local docs in standalone mode")
-    def test_attached_repo_lane_is_primary_and_device_flow_is_the_option(self):
+    def test_one_attached_repo_lane_is_the_flow(self):
         text = (SRC.parent / "CAPTAIN_START_PROMPT.md").read_text()
         self.assertIn('cat "$DST/captain/CAPTAIN_PROMPT.md" "$DST/captain/GITHUB_BRIEFS.md"', text)
-        self.assertIn('default flow is the Arena lane', text)
+        self.assertIn('the flow:** Keshab attaches the target repo', text)
         self.assertIn('you own CI', text)
-        self.assertIn('Never mix lanes in one task', text)
+        self.assertNotIn('Option B', text)
         playbook = (SRC.parent / "captain" / "CAPTAIN_PROMPT.md").read_text()
-        self.assertIn('Default lane — Arena-attached workers', playbook)
-        self.assertIn('Option B — Device Flow', playbook)
+        self.assertIn('One lane — Arena-attached workers', playbook)
         self.assertIn('not a standalone fallback', playbook)
         self.assertIn('--ref "$branch"', playbook)
         worker_starter = (SRC.parent / "captain" / "WORKER_START_PROMPT.md").read_text()
         self.assertIn('git push origin HEAD', worker_starter)
         self.assertIn('AGENT <W> PUSHED', worker_starter)
-        self.assertIn('Option B — no repo attached', worker_starter)
-        self.assertIn('fetch-brief --url', worker_starter)
-        self.assertIn('gh_app.py', worker_starter)
-        self.assertTrue((SRC.parent / "worker_up.sh").is_file())
+        self.assertIn('This is the only lane', worker_starter)
+        self.assertNotIn('fetch-brief', worker_starter)
+        self.assertTrue((SRC.parent / "captain" / "task_spec.py").is_file())
         self.assertIn('One commit, push your branch', (SRC.parent / "captain" / "FASTLANE.md").read_text())
 
     def test_speed_contract_is_visible_in_all_role_entrypoints(self):
@@ -568,10 +566,10 @@ class PromptTests(unittest.TestCase):
             self.assertIn('SPEED_POLICY.md', text, name)
             self.assertIn('120', text, name)
         generic = (SRC.parent / 'AGENT_START_PROMPT.md').read_text()
-        self.assertIn('The default lane is the attached repo', generic)
+        self.assertIn('The lane is the attached repo', generic)
         policy = (SRC.parent / 'captain/SPEED_POLICY.md').read_text()
         self.assertIn('Existing in-flight task specs remain unchanged', policy)
-        self.assertIn('Default lane: the repo is attached in Arena', policy)
+        self.assertIn('The lane is the attached repo', policy)
         self.assertIn('The broad gate is CI, and it is the Captain\'s job', policy)
         self.assertIn('no worker task.json edits', policy)
         self.assertIn('TWO corrective attempts', policy)
@@ -592,7 +590,7 @@ def load_tests(loader, suite, pattern):
     # Load explicit sibling files so the local suite also works with python -I.
     pack = SRC.parent / 'captain'
     if (pack / 'fastlane_selftest.py').is_file():
-        for name in ('flutter_sdk', 'worker_lane', 'ci_dispatch', 'fastlane_selftest'):
+        for name in ('task_spec', 'ci_dispatch', 'fastlane_selftest'):
             module = load_module(name, pack / f'{name}.py')
         suite.addTests(loader.loadTestsFromModule(module, pattern=pattern))
     return suite

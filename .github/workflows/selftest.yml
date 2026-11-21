@@ -48,6 +48,7 @@ jobs:
           python3 captain/ledger.py --file /tmp/L.json show --json >/dev/null
           python3 captain/batch_status.py --help >/dev/null
           python3 captain/ci_dispatch.py --help >/dev/null
+          python3 captain/task_spec.py --help >/dev/null
 
       - name: Offline auth/Fast-Lane selftest
         run: python3 selftest.py

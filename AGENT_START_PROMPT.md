@@ -14,14 +14,13 @@ the point**: never wait on CI, never run a check the change does not need.
 
 If this is a Captain A/B/C assignment, read
 `captain/WORKER_START_PROMPT.md` and `captain/FASTLANE.md` from agent-bootstrap.
-**The default lane is the attached repo**: Keshab attaches the target repo in
-this chat, the Captain's message names the brief in `docs/agent-briefs/`, and
-you edit `allowed` files, run one cheap check, and push **your own `arena/*`
+**The lane is the attached repo**: Keshab attaches the target repo in this
+chat, the Captain's message names the brief in `docs/agent-briefs/`, and you
+edit `allowed` files, run one cheap check, and push **your own `arena/*`
 branch**, then report the `PUSHED` block. The Captain runs CI and fixes reds —
-you never dispatch CI or open/merge a PR. Option B (Device Flow `gh_app.py
-connect` + `worker_lane.py fetch-brief`, `agent/<W>/<task>`) is only for a chat
-with no attached repo. Never mix lanes mid-task, and do not follow the
-independent direct-to-main setup below for a Captain task.
+you never dispatch CI or open/merge a PR. There is no second mode and no brief
+download tool; do not follow the independent direct-to-main setup below for a
+Captain task.
 
 Read `captain/SPEED_POLICY.md`: one pinned worker gate, no extra test battery.
 Flutter tests: fail fast, 30s per test, 120s wall. Timeout → BLOCKED; at most two
@@ -32,9 +31,8 @@ after PUSHED, or report MENTION PENDING. Workers never open/merge/close PRs.
 
 ## 1. Restore GitHub access — approve only when recovery is not possible
 
-**Skip this whole section for the default lane** — an attached repo already has Git
-access. Pair here only for Option B (an unattached chat) or for standalone work
-outside a Captain task.
+**Skip this whole section in a Captain task** — an attached repo already has Git
+access. Pair here only for standalone work outside a Captain task.
 
 ```bash
 DST=/home/user/agent-bootstrap   # keep the session in this workspace between turns
@@ -173,9 +171,8 @@ the [Captain playbook](captain/CAPTAIN_PROMPT.md),
 
 > Captain task হলে repo attach রাখো, `docs/agent-briefs/`-এর brief পড়ো, শুধু
 > `allowed` file edit করে **নিজের `arena/*` branch**-এ push করে `PUSHED` জানাও।
-> CI Captain চালাবে, তুমি কখনো নয়। Repo attach না থাকলেই কেবল Device Flow
-> (`gh_app.py connect` + `worker_lane.py`), আর একই task-এ দুই পদ্ধতি মেশাবে না।
-> একটাই cheap gate: preflight, বা task.json-এর একটাই test (৩০s/কেস, ১২০s wall)।
+> CI Captain চালাবে, তুমি কখনো নয়। একটাই cheap gate: preflight, বা task.json-এর
+> একটাই test (৩০s/কেস, ১২০s wall)।
 > Timeout হলে থামো; দুইবার fix ব্যর্থ হলে BLOCKED জানাও। Full suite/analyze/build
 > নয়; main/PR/CI worker-এর নয়।
 
@@ -183,9 +180,9 @@ the [Captain playbook](captain/CAPTAIN_PROMPT.md),
 
 ## বাংলা — এই prompt-এ কী কী আছে আর কেন
 
-**এখন ডিফল্ট ফ্লো সহজ:** worker chat-এ repo attach → Captain এক message-এ
-কাজ বলে দেয় → worker শুধু নিজের `arena/*` branch push করে → Captain GitHub
-থেকে branch এনে CI চালায়, লাল হলে নিজেই ঠিক করে। Device Flow শুধু ব্যাকআপ।
+**এখন ফ্লো একটাই:** worker chat-এ repo attach → Captain এক message-এ কাজ বলে
+দেয় → worker শুধু নিজের `arena/*` branch push করে → Captain GitHub থেকে branch
+এনে CI চালায়, লাল হলে নিজেই ঠিক করে।
 
 **পুরোনো prompt-এর সমস্যা ছিল:** (১) প্রতিটা ছোট কাজেও "pub get + analyze +
 full test" — সময় শেষ; (২) CI কে চালাবে, কতবার, অপেক্ষা করবে কিনা — কিছুই লেখা

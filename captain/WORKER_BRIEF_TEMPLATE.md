@@ -1,4 +1,4 @@
-# Captain worker brief — Arena lane (default) / Device Flow (Option B)
+# Captain worker brief — one task, one attached worker chat
 
 For each new task publish both files below at
 `docs/agent-briefs/<batch>/<task>/` on the target repo's `captain/briefs/<batch>`
@@ -21,7 +21,7 @@ handoff and reporting steps.
 
 **Interface / exclusions:** {{exact contracts to keep; what you must not change}}
 **Branch:** stay on the `arena/*` branch this chat is bound to — never `main`,
-never a new branch.
+never a new branch. `git push origin HEAD` is the only push you make.
 **Scope and gate:** See [task.json](task.json) at this same commit. Do not edit it.
 Edit ONLY its `allowed` paths. Run ONE cheap local check —
 `python3 tool/preflight.py`, or the single test named in `task.json`
@@ -40,7 +40,7 @@ the allowed files; if one item truly cannot be done, push the rest and name the
 gap in your report.
 ```
 
-## `task.json` — Arena lane (default)
+## `task.json`
 
 ```json
 {
@@ -49,37 +49,21 @@ gap in your report.
   "task": "{{UNIQUE_TASK_ID}}",
   "allowed": ["{{EXACT_FILE_1}}", "{{EXACT_FILE_2}}"],
   "commit": "{{type(scope): short description}}",
-  "check": {{CHECK_PROFILE}},
+  "check": {"kind": "preflight"},
   "arena": {"branch": "auto", "base_sha": null},
-  "tracker": "https://github.com/Keshab1997/{{REPO}}/issues/{{NUM}}"
-}
-```
-
-- `"arena"`: `{"branch": "auto", "base_sha": null}` for a fresh task from
-  `main`; `"base_sha": "<verified arena tip>"` (same `"branch": "auto"`) when the
-  task stacks on that worker's unmerged branch. Never mix with top-level
-  `base_sha`/`base_branch`.
-- `"tracker"`: optional approved same-repo issue URL.
-
-## `task.json` — Option B, unattached chat
-
-```json
-{
-  "repo": "Keshab1997/{{REPO}}",
-  "worker": "{{LETTER}}",
-  "task": "{{UNIQUE_TASK_ID}}",
-  "allowed": ["{{EXACT_FILE_1}}", "{{EXACT_FILE_2}}"],
-  "commit": "{{type(scope): short description}}",
-  "check": {{CHECK_PROFILE}},
-  "base_sha": null,
-  "base_branch": null,
   "tracker": null
 }
 ```
 
-Omit `"arena"`; `"base_sha": null` starts from current `origin/main`, or a full
-40-hex SHA (with `"base_branch": "agent/{{LETTER}}/{{PREV_TASK}}"` when it is not
-merged) chains onto a verified checkpoint.
+- `"check"`: `{"kind": "preflight"}` when the repo has `tool/preflight.py`,
+  otherwise `{"kind": "test", "test": "test/<name>_test.dart"}` for the single
+  matching test file. Python repos use `{"kind": "preflight"}` only if their own
+  cheap command is written that way; otherwise name the one test.
+- `"arena"`: `{"branch": "auto", "base_sha": null}` for a fresh task from
+  `main`; `"base_sha": "<verified arena tip>"` (same `"branch": "auto"`) when the
+  task stacks on that worker's unmerged branch.
+- `"tracker"`: optional approved same-repo issue URL, else `null`.
+- Validate before publishing: `python3 captain/task_spec.py task.json`.
 
 ## The assignment message (what the worker actually sees)
 

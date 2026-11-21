@@ -9,12 +9,11 @@ and lands the change on `main`. Up to three big, file-disjoint tasks at a time;
 the Captain works its own lane in parallel
 ([Speed rules](CAPTAIN_PROMPT.md#speed-rules--keshabs-top-priority)).
 
-**Option B — Device Flow** (`gh_app.py connect`, `worker_lane.py fetch-brief`)
-stays supported for a worker chat with no attached repo: it pairs once, pushes
-`agent/<worker>/<task>` and (optionally) mentions `@Keshab1997`.
+That is the only lane — there is no pairing step, no brief download tool and no
+second branch naming scheme to remember.
 
 1. Start Captain with [`CAPTAIN_START_PROMPT.md`](../CAPTAIN_START_PROMPT.md) (or `captain_up.sh`).
-2. Start Workers with [`WORKER_START_PROMPT.md`](WORKER_START_PROMPT.md) (or `worker_up.sh`).
+2. Start Workers with [`WORKER_START_PROMPT.md`](WORKER_START_PROMPT.md).
 3. [Publish a brief](GITHUB_BRIEFS.md) and paste ONE assignment message into the attached worker chat.
 4. Worker edits → one cheap check → `git push origin HEAD` → `AGENT A PUSHED` ([Fast Lane](FASTLANE.md)).
 5. Captain verifies the exact `base..tip`, runs CI (`ci_dispatch.py --ref <branch> --logs`), fixes reds, lands on `main`, and sends the next big task.
@@ -22,11 +21,10 @@ stays supported for a worker chat with no attached repo: it pairs once, pushes
 | File | Purpose |
 |---|---|
 | [HOW_TO_START_BN.md](HOW_TO_START_BN.md) | মানুষের জন্য ধাপে ধাপে ব্যবহার |
-| [WORKER_START_PROMPT.md](WORKER_START_PROMPT.md) | Copy-paste starter for attached-repo workers (Option B below it) |
+| [WORKER_START_PROMPT.md](WORKER_START_PROMPT.md) | Copy-paste starter for a worker chat |
 | [CAPTAIN_PROMPT.md](CAPTAIN_PROMPT.md) | Scope, review, integration and finalization rules |
+| [`task_spec.py`](task_spec.py) | Validate a brief's `task.json` before publishing |
 | [WORKER_BRIEF_TEMPLATE.md](WORKER_BRIEF_TEMPLATE.md) | `BRIEF.md` + `task.json` template |
-| [`worker_lane.py`](worker_lane.py) | Fetch brief, start, check, diff, publish, mention, and review |
-| [`flutter_sdk.py`](flutter_sdk.py) | Pinned Flutter SDK setup for Flutter profiles |
 
 No shared tokens between workspaces, no settings changes, no releases, and no manual CI dispatch by workers.
 

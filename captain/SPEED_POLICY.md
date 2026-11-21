@@ -7,13 +7,11 @@ Existing in-flight task specs remain unchanged; never silently weaken a gate.
 
 ## Start and communicate
 
-- **Default lane: the repo is attached in Arena.** Keshab opens a worker chat
-  with the target repo attached and pastes the Captain's one assignment message.
-  The worker reads the brief from `docs/agent-briefs/`, edits `allowed` files,
-  pushes its own `arena/*` branch, and reports `PUSHED`. No pairing, no
-  connector exploration, no `fetch-brief`, no "what does this link mean".
-  Device Flow (`worker_lane.py`, `agent/<W>/<task>`) is Option B, only for a
-  chat with no attached repo or when the Captain says so.
+- **The lane is the attached repo.** Keshab opens a worker chat with the target
+  repo attached and pastes the Captain's one assignment message. The worker
+  reads the brief from `docs/agent-briefs/`, edits `allowed` files, pushes its
+  own `arena/*` branch, and reports `PUSHED`. No pairing, no connector
+  exploration, no brief download, no "what does this link mean".
 - Bengali status questions such as “কী হলো”, “kiholo”, “ki holo” mean “what is the
   progress?” Answer with actual progress/blocker, then continue; do not call
   them stray text or ask the user to translate.
@@ -85,9 +83,10 @@ Existing in-flight task specs remain unchanged; never silently weaken a gate.
 - Land each checkpoint as soon as CI is green; don't wait for the whole batch.
   Never call pending or red CI successful.
 
-## Pairing (Option B only) is separate from speed
+## Access is separate from speed
 
-Reuse each workspace's saved session, refresh first, resume pending codes.
-Never copy credentials to workers or force a new approval on network/config
-errors. A fresh workspace needs its own first approval. Authentication refresh
-bugs are not fixed by this policy and must be reported honestly.
+Workers already have Git access to the attached repo: never ask for a token, a
+password or a PAT, and never copy `secrets/` into a worker chat. If a push
+fails on permissions, report `BLOCKED` with the exact error and let the Captain
+fix access. The Captain's own `gh_app.py connect` reuse/refresh behaviour is
+unchanged — a network or rate-limit error is a retry, not a new approval.

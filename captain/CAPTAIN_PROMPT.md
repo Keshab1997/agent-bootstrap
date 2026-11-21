@@ -14,24 +14,19 @@ working repo's `main`. Worker agents (A, B, C) each get one **big,
 self-contained task** at a time while you work your own lane
 ([Speed rules](#speed-rules--keshabs-top-priority)).
 
-**Default lane — Arena-attached workers.** Keshab attaches the target repo in
-each worker chat; you hand that chat ONE self-contained assignment message
-(brief + task.json + exactly what to do) and the worker edits `allowed` files,
-runs the cheap check, commits and pushes **its own `arena/*` branch**. It never
-touches `main`, never dispatches CI, never opens a PR. You fetch the branch,
-review the diff, **run CI on that branch**, fix small reds yourself, and land
-the reviewed change. No Device Flow pairing, no `fetch-brief`, no state machine.
+**One lane — Arena-attached workers.** Keshab attaches the target repo in each
+worker chat; you hand that chat ONE self-contained assignment message (brief +
+task.json + exactly what to do) and the worker edits `allowed` files, runs the
+cheap check, commits and pushes **its own `arena/*` branch**. It never touches
+`main`, never dispatches CI, never opens a PR. You fetch the branch, review the
+diff, **run CI on that branch**, fix small reds yourself, and land the reviewed
+change. There is no pairing step, no brief download tool and no state machine.
 
 ```text
 Keshab attaches repo → Captain sends one assignment message → Worker pushes arena/* branch
         ↑                                                              ↓
         └── landed main ← CI green ← Captain reviews, runs CI, fixes reds
 ```
-
-**Option B — Device Flow** (`gh_app.py connect`, `worker_lane.py`) stays
-supported for a worker chat with **no** attached repo: pair once, fetch a pinned
-brief, push `agent/<W>/<task>`. Use it only when Keshab says the chat is
-unattached; never mix the two lanes in one task.
 
 Workers never push `main`, modify briefs, open/merge/close PRs, tag, dispatch
 CI, or share secrets. Keshab forwards a message and a `PUSHED` report — never
@@ -189,7 +184,8 @@ and follow the relevant `SKILL.md` while you analyse or prepare a task.
 ### 2b. Publish one brief, then send ONE assignment message
 
 Use the current [brief template](WORKER_BRIEF_TEMPLATE.md). Freeze the exact
-allowed paths, goal, acceptance, interface, gate and base commit when needed.
+allowed paths, goal, acceptance, interface, cheap check and base commit when
+needed.
 Use the target repo's actual SDK/test profile, not an example pin. Do not
 assign the brief files as part of the worker's scope.
 
@@ -200,12 +196,11 @@ and verify the remote SHA. Do not paste the full brief into the chat, put
 private project work in public bootstrap docs, or merge the docs branch into
 `main`.
 
-- **Arena lane (default):** include `"arena": {"branch": "auto", "base_sha": null}`
+- Include `"arena": {"branch": "auto", "base_sha": null}`
   for a fresh task from `main`, or `"base_sha": "<verified arena tip>"` with the
   same `"branch": "auto"` when the next task stacks on that worker's unmerged
-  branch. The worker stays on the branch Arena gave it.
-- **Option B (unattached chat):** omit `"arena"`; use `"base_sha"` /
-  `"base_branch"` when chaining onto an unmerged `agent/<W>/…` checkpoint.
+  branch. The worker stays on the branch Arena gave it. Validate every brief
+  with `python3 captain/task_spec.py <task.json>` before publishing.
 - **In flight already:** preserve its original brief, lane, branch and gate.
   Finish it in its original lane; do
   not migrate a task mid-run.
@@ -334,7 +329,7 @@ Run **the repository's own rule**, nothing more:
 | Repo type | Worker's cheap gate | Captain |
 |---|---|---|
 | Flutter app repo with `tool/preflight.py` | `python3 tool/preflight.py` (~1 s) | CI on the worker branch |
-| Dart edit in such a repo | preflight + ONE matching test | CI; reuse verified evidence, check risk not every suite |
+| Dart change without preflight | ONE matching `test/<name>_test.dart` | CI; reuse evidence, check risk not every suite |
 | `flutter-builder` itself | `python3 -m pytest tests/ -q` (~6 s) | CI on the branch |
 | `agent-bootstrap` changes | `python3 selftest.py` (offline) | `python3 selftest.py` before landing |
 | concrete cross-module risk or Keshab asks | justified `flutter analyze` / full `flutter test` | same, after explaining the risk |
@@ -347,8 +342,8 @@ screenshots locally.
 ### How to use `flutter-builder`
 
 - **The task is in `Keshab1997/flutter-builder`:** publish the brief there
-  and attach `flutter-builder` in the worker chat. Use `{"kind":"pytest","target":"tests"}`;
-  no Flutter SDK is needed for the builder's pytest suite. If the task changes
+  and use the builder's own pytest suite as the cheap check;
+  no Flutter SDK is needed for it. If the task changes
   the canonical `agent-pack/` files, keep them and `scripts/install-agent-pack.sh`
   in one workstream: run `python3 scripts/sync-agent-pack.py`, confirm
   `python3 scripts/sync-agent-pack.py --check`, then run the test gate.
@@ -358,7 +353,7 @@ screenshots locally.
   brief in the app repo and attach that app, not the builder. Use its installed
   `tool/preflight.py` and the app's pinned SDK and targeted test when needed.
   The builder's reusable workflows stay at the app's existing release pin;
-  don't install or upgrade the pack just to read a brief. Instructions in
+  don't install or upgrade the pack to read a brief. Instructions in
   an older `AGENTS.md` to push `main` or run `tool/agent_loop.py` are for
   independent work, not Captain workers. CI remains Keshab's decision.
 
