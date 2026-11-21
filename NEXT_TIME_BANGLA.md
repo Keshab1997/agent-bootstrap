@@ -15,8 +15,7 @@ Captain-এর নতুন চ্যাটে [`CAPTAIN_START_PROMPT.md`](CAPTA
 bash <(curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/captain_up.sh)
 ```
 
-শুধু একজন agent দিয়ে কাজ হলে [`AGENT_START_PROMPT.md`](AGENT_START_PROMPT.md)
-বা [`PROMPT-FOR-NEW-AGENT.txt`](PROMPT-FOR-NEW-AGENT.txt) দিন।
+শুধু একজন agent দিয়ে কাজ হলে [`AGENT_START_PROMPT.md`](AGENT_START_PROMPT.md) দিন।
 
 একদম ছোট করে বললেও চলে:
 
@@ -131,8 +130,8 @@ python3 selftest.py                    # fake token দিয়ে offline regr
 | Revoked/expired refresh বা হারানো credential | আবার approval লাগতে পারে |
 
 **শুধু public repo দিয়ে সব নতুন workspace-কে গোপনে write access দেওয়া নিরাপদ নয়।**
-তার জন্য আলাদা secure credential-delivery ব্যবস্থা লাগবে; এই update তা বানায় না।
-`vault.py` ব্যবহার করলেও তার password নিরাপদে দেওয়ার ব্যবস্থা চাই।
+তার জন্য আলাদা secure credential-delivery ব্যবস্থা লাগবে; এই repo তা বানায় না।
+কোনো token কোথাও গোপনে রেখে শর্টকাট নেওয়ার চেষ্টা করবেন না।
 
 ## নিরাপত্তা ও Flutter
 

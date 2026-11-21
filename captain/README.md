@@ -27,8 +27,6 @@ stays supported for a worker chat with no attached repo: it pairs once, pushes
 | [WORKER_BRIEF_TEMPLATE.md](WORKER_BRIEF_TEMPLATE.md) | `BRIEF.md` + `task.json` template |
 | [`worker_lane.py`](worker_lane.py) | Fetch brief, start, check, diff, publish, mention, and review |
 | [`flutter_sdk.py`](flutter_sdk.py) | Pinned Flutter SDK setup for Flutter profiles |
-| [`examples/`](examples/) | Three compatible, file-disjoint example briefs |
-| [LEGACY_WORKER_BRIEF.md](LEGACY_WORKER_BRIEF.md) | Manual handoff only for work already started |
 
 No shared tokens between workspaces, no settings changes, no releases, and no manual CI dispatch by workers.
 

@@ -10,7 +10,6 @@ on:
     paths:
       - 'gh_app.py'
       - 'device_pair.py'
-      - 'vault.py'
       - 'selftest.py'
       - 'setup.sh'
       - 'captain_up.sh'
@@ -38,7 +37,7 @@ jobs:
       - name: Tool smoke (compile, bash -n, ledger roundtrip, CLI help)
         run: |
           set -eu
-          python3 -m py_compile gh_app.py device_pair.py vault.py selftest.py captain/*.py
+          python3 -m py_compile gh_app.py device_pair.py selftest.py captain/*.py
           bash -n setup.sh captain_up.sh
           python3 captain/ledger.py --file /tmp/L.json upsert \
             --repo keshab1997/example --batch b1 --worker A --task t1 --status assigned

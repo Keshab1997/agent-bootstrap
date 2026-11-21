@@ -97,5 +97,5 @@ Reply with the AGENT {{LETTER}} PUSHED block. Never main, CI, or a PR.
 **Captain:** Size every brief by [Speed rule 1](CAPTAIN_PROMPT.md#speed-rules--keshabs-top-priority):
 one complete deliverable, up to 40 allowed files — never a micro-task.
 Never assign the brief files as worker scope, and never confuse the docs commit
-SHA in the permalink with the code `base_sha`. See [examples](examples/). Preserve
+SHA in the permalink with the code `base_sha`. Preserve
 the original JSON and lane for work already in flight; do not migrate it mid-task.

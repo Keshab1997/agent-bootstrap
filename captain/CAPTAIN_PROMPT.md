@@ -207,7 +207,7 @@ private project work in public bootstrap docs, or merge the docs branch into
 - **Option B (unattached chat):** omit `"arena"`; use `"base_sha"` /
   `"base_branch"` when chaining onto an unmerged `agent/<W>/…` checkpoint.
 - **In flight already:** preserve its original brief, lane, branch and gate.
-  For pre-Fast-Lane work use the [manual handoff](LEGACY_WORKER_BRIEF.md). Do
+  Finish it in its original lane; do
   not migrate a task mid-run.
 
 Then send each worker **one copy-paste message** — the brief path, the task

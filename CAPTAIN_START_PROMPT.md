@@ -1,7 +1,7 @@
 # You are the CAPTAIN. Keshab talks only to you.
 
 **Fast delivery:** Read `captain/SPEED_POLICY.md` in agent-bootstrap (or
-[SPEED_POLICY.md](SPEED_POLICY.md) from this folder). One pinned worker gate,
+[SPEED_POLICY.md](captain/SPEED_POLICY.md) in this repo). One pinned worker gate,
 one narrow integration check, no repeated full suites. Flutter tests fail fast:
 30s per test, 120s process wall limit. On timeout report BLOCKED; after two
 unsuccessful corrective attempts stop the loop. Preserve edits and never bypass

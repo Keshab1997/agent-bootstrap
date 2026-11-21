@@ -115,10 +115,9 @@ See the [Bengali walkthrough](captain/HOW_TO_START_BN.md),
 ## Starting a fresh agent — one paste
 
 For independent work, hand a new agent [`AGENT_START_PROMPT.md`](AGENT_START_PROMPT.md):
-pairing, the Flutter SDK step, the check-when-needed policy, the manual-CI rule
-and the sandbox's traps, all in one copy-paste block. A plain-text twin
-([`PROMPT-FOR-NEW-AGENT.txt`](PROMPT-FOR-NEW-AGENT.txt)) and a one-click-copy
-page ([`AGENT_PROMPT_COPY.html`](AGENT_PROMPT_COPY.html)) carry the same text.
+pairing, the Flutter SDK step, the check-when-needed policy, the CI rule and the
+sandbox's traps, all in one copy-paste block. It is the only copy — no derived
+twins to keep in sync.
 
 ---
 
@@ -225,43 +224,6 @@ push, PR, and run workflows.
 
 ---
 
-## Optional: `vault.py` (not used by default)
-
-This repo ships with **no credentials**, which is the safest arrangement. If you
-use [`vault.py`](vault.py), it can store a **Fine-Grained PAT** encrypted. This
-is **not** a zero-secret login: each fresh workspace still needs the passphrase
-through a secure secret-delivery mechanism. Do not put that passphrase in a
-public repo, a worker brief or chat logs. This is not required for refresh/resume
-or the branch-push workflow.
-
-Example for a separately managed vault:
-
-```bash
-python3 vault.py seal --set token --generate-passphrase     # prints a strong passphrase once
-python3 vault.py unseal --get token --to-file secrets/pat.txt
-python3 vault.py verify                                     # sanity check
-```
-
-- AES-256-CBC + PBKDF2-HMAC-SHA256 (600 000 iterations) + HMAC-SHA256,
-  encrypt-then-MAC. Output is plain base64, so **GitHub secret scanning will
-  not flag or auto-revoke it.**
-- Create a Fine-Grained PAT at *Settings → Developer settings → Personal access
-  tokens → Fine-grained tokens*.
-
-**Why a PAT and not the App refresh token?** GitHub App refresh tokens are
-**single-use and rotate**. If two agents share one, the first to refresh
-invalidates every other copy. A Fine-Grained PAT does not rotate, so it is the
-only credential suitable for a shared vault.
-
-**Passphrase hygiene**
-
-- Keep the passphrase out of git, out of chat logs, and off your GitHub account.
-- Do **not** reuse your GitHub password or any real-world password here.
-- Longer beats complex: four random unrelated words are stronger and easier to
-  remember than `P@ssw0rd123`.
-
----
-
 ## Why this repo is public
 
 A private repo would defeat the purpose: an agent in a fresh sandbox has no
@@ -331,12 +293,11 @@ agent-bootstrap/
 ├── selftest.py            ← offline test: never re-ask for authorization
 ├── app-meta.json          ← App, installation, endpoints, permissions, token policy
 ├── setup.sh               ← curl | bash one-shot installer
-├── vault.py               ← optional passphrase-encrypted token store
+├── worker_up.sh           ← one-command Worker boot (Option B)
+├── captain_up.sh          ← one-command Captain boot
 ├── AGENT_START_PROMPT.md  ← hand this to a fresh agent session (one paste)
 ├── CAPTAIN_START_PROMPT.md ← same, for the captain of a multi-agent batch
-├── captain/               ← Fast Lane runner, exact Flutter setup, briefs, BN guide
-├── PROMPT-FOR-NEW-AGENT.txt ← same prompt as plain text
-├── AGENT_PROMPT_COPY.html ← same prompt with a one-click copy button
-├── RESUME.md              ← workspace resume guide (paths, traps, policies)
+├── NEXT_TIME_BANGLA.md    ← বাংলায় পরেরবারের গাইড
+├── captain/               ← playbooks, brief template, worker_lane, CI + ledger tools
 └── .gitignore             ← keeps secrets/ out of git
 ```
