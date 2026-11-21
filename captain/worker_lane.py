@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Start, check, diff, publish, or review one bounded Captain task.
+"""Fetch, start, check, diff, publish, mention, or review one bounded Captain task.
 
-Linked tasks checkpoint the current arena/* branch; standalone tasks get a
-fresh agent/<worker>/<task> branch. Nothing here opens or closes a PR, writes
-main, runs CI, resets edits, or starts an authorization flow.
+Device-Flow tasks (default) manage an isolated clone under the workbench and
+push to agent/<worker>/<task> using gh_app.py pairing; optional Arena-linked
+tasks checkpoint the attached arena/* branch. Nothing here opens or closes a
+PR, writes main, runs CI, resets edits, or starts an authorization flow.
 """
 from __future__ import annotations
 
 import argparse
+import base64
 from contextlib import contextmanager
 import fcntl
 import json
@@ -26,6 +28,13 @@ BOOTSTRAP = Path(__file__).resolve().parent.parent
 SHA = re.compile(r'[0-9a-f]{40}(?:[0-9a-f]{24})?\Z')
 REPO = re.compile(OWNER + r'/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}\Z')
 TASK = re.compile(r'[a-z0-9][a-z0-9-]{0,63}\Z')
+BRANCH_REF = re.compile(r'(?:main|(?:agent|arena)/[A-Za-z0-9._/-]+)\Z')
+ISSUE_URL = re.compile(r'https://github\.com/(' + OWNER + r')/([A-Za-z0-9][A-Za-z0-9_.-]{0,99})/issues/(\d+)\Z')
+BRIEF_URL = re.compile(
+    r'https://github\.com/(' + OWNER + r'/[A-Za-z0-9][A-Za-z0-9_.-]{0,99})/(?:blob|tree)/'
+    r'([0-9a-f]{40})/docs/agent-briefs/([a-z0-9][a-z0-9-]{0,63})/([a-z0-9][a-z0-9-]{0,63})'
+    r'/(?:BRIEF\.md|task\.json)(?:[?#].*)?\Z'
+)
 KEY_PATTERN = re.compile(rb'(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|-----BEGIN (?:[A-Z0-9]+ )?PRIVATE KEY-----)')
 RESERVED = {'pubspec.yaml', 'pubspec.lock', 'lib/main.dart', 'lib/app/app.dart',
             'lib/app/router.dart', 'firestore.rules', '.gitignore', '.gitmodules',
@@ -83,10 +92,18 @@ def allowed_path(value):
     return str(path)
 
 
+def validate_branch_ref(value):
+    if (not isinstance(value, str) or not BRANCH_REF.fullmatch(value)
+            or '..' in value or value.endswith(('/', '.lock')) or '//' in value):
+        raise LaneError(f'Invalid branch ref {value!r}; expected main, agent/*, or arena/*.')
+    return value
+
+
 def validate_task(data):
     required = {'repo', 'worker', 'task', 'allowed', 'commit', 'check'}
-    if not isinstance(data, dict) or set(data) - {'arena'} != required:
-        raise LaneError('Task JSON needs repo, worker, task, allowed, commit, check, and optionally arena.')
+    optional = {'arena', 'base_sha', 'base_branch', 'tracker'}
+    if not isinstance(data, dict) or not required.issubset(data) or not set(data).issubset(required | optional):
+        raise LaneError('Task JSON needs repo, worker, task, allowed, commit, check, and optional base_sha/base_branch/tracker/arena.')
     if not isinstance(data['repo'], str) or not REPO.fullmatch(data['repo']) or data['repo'].lower().endswith('.git'):
         raise LaneError(f'Repo must be {OWNER}/<name>.')
     if data['worker'] not in ('A', 'B', 'C'):
@@ -102,6 +119,8 @@ def validate_task(data):
     if (not isinstance(message, str) or not 1 <= len(message) <= 160
             or message.strip() != message or any(ord(c) < 32 for c in message)):
         raise LaneError('Use a short, single-line commit message.')
+    if 'arena' in data and ('base_sha' in data or 'base_branch' in data):
+        raise LaneError('Use either arena.{branch, base_sha} or top-level base_sha/base_branch, not both.')
     if 'arena' in data:
         arena = data['arena']
         if (not isinstance(arena, dict) or set(arena) != {'branch', 'base_sha'}
@@ -109,6 +128,13 @@ def validate_task(data):
                 or not (arena['branch'] == 'auto' or arena['branch'].startswith('arena/'))
                 or not (arena['base_sha'] is None or is_sha(arena['base_sha']))):
             raise LaneError('arena needs branch (arena/* or auto) and base_sha (full SHA or null for a first task).')
+    if 'base_sha' in data and data['base_sha'] is not None and not is_sha(data['base_sha']):
+        raise LaneError('base_sha must be a full commit SHA or null.')
+    if 'base_branch' in data and data['base_branch'] is not None:
+        validate_branch_ref(data['base_branch'])
+    if 'tracker' in data and data['tracker'] is not None:
+        if not isinstance(data['tracker'], str) or not ISSUE_URL.fullmatch(data['tracker']):
+            raise LaneError(f'tracker must be a {OWNER} GitHub issue URL or null.')
     check = data['check']
     if not isinstance(check, dict) or 'kind' not in check:
         raise LaneError('Set a check profile: preflight, flutter, pytest, or selftest.')
@@ -503,9 +529,28 @@ class Lane:
                 raise LaneError('Local changes exist. Preserve them; no new task was started.')
             if self.text('branch', '--list', self.branch) or self.remote_sha(self.branch):
                 raise LaneError('Task branch already exists without matching saved state. Use a fresh task ID.')
+            pinned = self.task.get('base_sha')
+            base_branch = self.task.get('base_branch') or 'main'
+            base_ref = f'refs/heads/{base_branch}'
+            track_ref = f'refs/remotes/origin/{base_branch}'
             self.git('fetch', '--no-tags', '--no-recurse-submodules', 'origin',
-                     'refs/heads/main:refs/remotes/origin/main', network=True)
-            base = self.text('rev-parse', '--verify', 'refs/remotes/origin/main^{commit}')
+                     f'+{base_ref}:{track_ref}', network=True)
+            if not pinned:
+                base = self.text('rev-parse', '--verify', f'{track_ref}^{{commit}}')
+            else:
+                if self.git('cat-file', '-e', f'{pinned}^{{commit}}', check=False).returncode:
+                    if self.text('rev-parse', '--is-shallow-repository') == 'true':
+                        self.git('fetch', '--no-tags', '--no-recurse-submodules', '--unshallow',
+                                 'origin', f'+{base_ref}:{track_ref}', network=True, check=False)
+                    if self.git('cat-file', '-e', f'{pinned}^{{commit}}', check=False).returncode:
+                        self.git('fetch', '--no-tags', '--no-recurse-submodules',
+                                 'origin', pinned, network=True, check=False)
+                    if self.git('cat-file', '-e', f'{pinned}^{{commit}}', check=False).returncode:
+                        raise LaneError(f'Pinned base_sha {pinned[:12]} was not found on {base_branch} or origin.')
+                if self.task.get('base_branch') and self.git(
+                        'merge-base', '--is-ancestor', pinned, f'{track_ref}^{{commit}}', check=False).returncode:
+                    raise LaneError(f'Pinned base_sha {pinned[:12]} is not on base_branch {base_branch}.')
+                base = pinned
             self.git('switch', '-c', self.branch, base)
             last = None
         state = {'task': self.task, 'base_sha': base, 'branch': self.branch, 'remote_base': last, 'pushed': False}
@@ -690,7 +735,8 @@ class Lane:
             raise LaneError('Review needs the two distinct full SHAs from the PUSHED report.')
         self.check_origin()
         self.check_branch(branch)
-        if self.arena and self.arena['base_sha'] and self.arena['base_sha'] != base:
+        expected_base = self.arena['base_sha'] if self.arena else self.task.get('base_sha')
+        if expected_base and expected_base != base:
             raise LaneError('Reported base does not match the approved task base.')
         self.git('fetch', '--no-tags', '--no-recurse-submodules', 'origin', 'refs/heads/' + branch, network=True)
         if self.text('rev-parse', '--verify', 'FETCH_HEAD^{commit}') != tip:
@@ -700,6 +746,40 @@ class Lane:
               '\nFiles: ' + ', '.join(files), '\nRead this diff and run the integration gate before landing.', flush=True)
         sys.stdout.buffer.write(patch)
         self._ledger_record(branch, base, tip)
+
+    def mention(self, tracker_url=None, brief_url=None, *, api_fn=None):
+        """Post the @Keshab1997 checkpoint mention to the approved tracking issue."""
+        state = self.sync_resumed_state(self.load())
+        if not state.get('pushed'):
+            raise LaneError('Publish and verify the remote branch before posting a tracker mention.')
+        url = tracker_url or self.task.get('tracker')
+        if not url:
+            raise LaneError('No tracking issue URL in task JSON or --tracker; report in chat instead.')
+        m = ISSUE_URL.fullmatch(url.strip())
+        if not m:
+            raise LaneError(f'tracker must be a {OWNER} GitHub issue URL (got {url!r}).')
+        owner, repo_name, issue_num = m.groups()
+        api = api_fn or gh_api
+        comments_path = f'/repos/{owner}/{repo_name}/issues/{issue_num}/comments'
+        comments = api('GET', comments_path + '?per_page=100') or []
+        needle = state['commit'][:7]
+        for comment in comments:
+            body = comment.get('body') or ''
+            if 'checkpoint ready' in body and self.slug in body and needle in body:
+                html_url = comment.get('html_url') or url
+                state['mention_url'] = html_url
+                save_json(self.state_file, state)
+                return html_url, False
+        lines = [f'@{OWNER} — checkpoint ready for review', '']
+        if brief_url:
+            lines.append(f'Brief: {brief_url}')
+        lines.append(f'Commit: https://github.com/{self.task["repo"]}/commit/{state["commit"]}')
+        lines.extend(['', '```text', self.describe(state, confirmed=True), '```'])
+        created = api('POST', comments_path, {'body': '\n'.join(lines)})
+        html_url = (created or {}).get('html_url') or url
+        state['mention_url'] = html_url
+        save_json(self.state_file, state)
+        return html_url, True
 
     def _ledger_record(self, branch, base, tip):
         """Best-effort Captain ledger update after a successful review. A
@@ -751,6 +831,62 @@ class Lane:
         return out + (f'\nrestored_from: {state["restored_from"]}' if state.get('restored_from') else '')
 
 
+def gh_api(method, path, data=None, timeout=40):
+    gh = BOOTSTRAP / 'gh_app.py'
+    cmd = [sys.executable, '-B', str(gh), 'api', method, path, '--raw']
+    if data is not None:
+        cmd.extend(['--data', json.dumps(data)])
+    proc = subprocess.run(cmd, cwd=str(BOOTSTRAP), capture_output=True, text=True, timeout=timeout)
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout).strip().splitlines()
+        msg = detail[-1][:240] if detail else f'exit {proc.returncode}'
+        raise LaneError(f'GitHub API {method} {path} failed ({msg}). Check pairing with `python3 gh_app.py status`.')
+    body = proc.stdout.strip()
+    return json.loads(body) if body else None
+
+
+def parse_brief_url(url):
+    m = BRIEF_URL.fullmatch((url or '').strip())
+    if not m:
+        raise LaneError('Invalid brief URL; expected a commit-pinned GitHub blob link to docs/agent-briefs/<batch>/<task>/BRIEF.md.')
+    return m.group(1), m.group(2), m.group(3), m.group(4)
+
+
+def _decode_content(payload, label):
+    if not isinstance(payload, dict) or payload.get('encoding') != 'base64' or not isinstance(payload.get('content'), str):
+        raise LaneError(f'Unexpected GitHub contents payload for {label}.')
+    return base64.b64decode(payload['content']).decode('utf-8')
+
+
+def fetch_brief(repo, brief_sha, batch, task_id, *, root=ROOT, worker=None, api_fn=None):
+    if not isinstance(repo, str) or not REPO.fullmatch(repo) or repo.lower().endswith('.git'):
+        raise LaneError(f'Repo must be {OWNER}/<name>.')
+    if not isinstance(brief_sha, str) or not re.fullmatch(r'[0-9a-f]{40}', brief_sha):
+        raise LaneError('brief_sha must be a full 40-hex commit SHA.')
+    if not isinstance(batch, str) or not TASK.fullmatch(batch):
+        raise LaneError('Invalid batch ID.')
+    if not isinstance(task_id, str) or not TASK.fullmatch(task_id):
+        raise LaneError('Invalid task ID.')
+    api = api_fn or gh_api
+    cmp_res = api('GET', f'/repos/{repo}/compare/{brief_sha}...captain/briefs/{batch}') or {}
+    if cmp_res.get('status') not in ('identical', 'ahead'):
+        raise LaneError(f'Brief commit {brief_sha[:12]} is not on captain/briefs/{batch}.')
+    base_dir = f'docs/agent-briefs/{batch}/{task_id}'
+    brief_md = _decode_content(api('GET', f'/repos/{repo}/contents/{base_dir}/BRIEF.md?ref={brief_sha}'), 'BRIEF.md')
+    task_raw = _decode_content(api('GET', f'/repos/{repo}/contents/{base_dir}/task.json?ref={brief_sha}'), 'task.json')
+    spec = validate_task(json.loads(task_raw))
+    if spec['repo'] != repo or spec['task'] != task_id:
+        raise LaneError('Brief task.json repo or task ID does not match the pinned brief path.')
+    if worker and spec['worker'] != worker:
+        raise LaneError(f'Brief is for Worker {spec["worker"]}, not Worker {worker}.')
+    inbox_root = Path(root).resolve() / 'inbox'
+    inbox_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    inbox = Path(tempfile.mkdtemp(prefix=f'{task_id}-', dir=inbox_root))
+    (inbox / 'BRIEF.md').write_text(brief_md, encoding='utf-8')
+    (inbox / 'task.json').write_text(task_raw, encoding='utf-8')
+    return inbox, spec
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=ROOT, help='workbench for standalone clones and task records')
@@ -758,11 +894,41 @@ def main():
     parser.add_argument('--branch', help='reported branch for review only')
     parser.add_argument('--base', help='reported full base SHA for review only')
     parser.add_argument('--tip', help='reported full pushed SHA for review only')
-    parser.add_argument('command', choices=('start', 'status', 'check', 'diff', 'publish', 'review'))
-    parser.add_argument('task_file', type=Path, help='original Captain task JSON')
+    parser.add_argument('--url', help='pinned GitHub brief permalink for fetch-brief')
+    parser.add_argument('--repo', help='owner/repo for fetch-brief when not using --url')
+    parser.add_argument('--batch', help='batch ID for fetch-brief when not using --url')
+    parser.add_argument('--task', help='task ID for fetch-brief when not using --url')
+    parser.add_argument('--brief-sha', help='full 40-hex brief commit SHA for fetch-brief when not using --url')
+    parser.add_argument('--worker', choices=('A', 'B', 'C'), help='expected worker letter for fetch-brief')
+    parser.add_argument('--tracker', help='approved GitHub issue URL for mention')
+    parser.add_argument('--brief-url', help='pinned GitHub brief permalink to include in mention')
+    parser.add_argument('command', choices=('fetch-brief', 'start', 'status', 'check', 'diff', 'publish', 'mention', 'review'))
+    parser.add_argument('task_file', nargs='?', type=Path, help='original Captain task JSON')
     args = parser.parse_args()
     lane = None
     try:
+        if args.command == 'fetch-brief':
+            if args.task_file is not None:
+                raise LaneError('fetch-brief takes --url (or --repo/--batch/--task/--brief-sha), not a task_file.')
+            if args.url:
+                repo, brief_sha, batch, task_id = parse_brief_url(args.url)
+            else:
+                if not all((args.repo, args.batch, args.task, args.brief_sha)):
+                    raise LaneError('Pass --url or all of --repo, --batch, --task, --brief-sha.')
+                repo, brief_sha, batch, task_id = args.repo, args.brief_sha, args.batch, args.task
+            inbox, spec = fetch_brief(repo, brief_sha, batch, task_id, root=args.root, worker=args.worker)
+            mode = 'arena-linked' if 'arena' in spec else 'device-flow'
+            print('\n'.join([
+                f'brief: {inbox / "BRIEF.md"}',
+                f'task_json: {inbox / "task.json"}',
+                f'repo: {spec["repo"]}',
+                f'worker: {spec["worker"]}',
+                f'task: {spec["task"]}',
+                f'mode: {mode}',
+            ]))
+            return
+        if args.task_file is None:
+            raise LaneError(f'{args.command} requires a task_file path.')
         reviewing = args.command == 'review'
         if reviewing and not all((args.branch, args.base, args.tip)):
             raise LaneError('For review, give --branch, --base, and --tip from the worker’s PUSHED report.')
@@ -776,10 +942,15 @@ def main():
             if args.command == 'diff':
                 lane.diff()
                 return
+            if args.command == 'mention':
+                comment_url, created = lane.mention(tracker_url=args.tracker, brief_url=args.brief_url)
+                label = 'mentioned' if created else 'already_mentioned'
+                print(f'{label}: {comment_url}')
+                return
             state = lane.load() if args.command == 'status' else getattr(lane, args.command)()
             print(lane.describe(state, confirmed=args.command == 'publish'))
     except (LaneError, SDKError, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
-        who = lane.worker if lane else '?'
+        who = lane.worker if lane else (args.worker or '?')
         parser.exit(1, f'AGENT {who} BLOCKED\nblocked: {exc}\n')
 
 

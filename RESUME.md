@@ -19,13 +19,12 @@ onboarding (pairing, Flutter SDK, check policy, CI-is-manual, sandbox traps)
 in one paste. This RESUME.md is the longer version for an agent already inside
 the workspace. For a Captain batch, refresh `agent-bootstrap` from `origin/main`
 without discarding local work. Use [GitHub briefs](captain/GITHUB_BRIEFS.md) and
-[Fast Lane](captain/FASTLANE.md): attach the target repo in Arena, read the
-pinned GitHub brief, and checkpoint the real `arena/*` branch. After a verified
-push mention `@Keshab1997` in the approved tracker, or mark `MENTION PENDING`
-if comment access is unavailable. Use the last Captain-verified tip as the
-next base. A linked PR merge/close is terminal; open a new correctly attached
-chat with a new pinned link. Do not pair or re-clone to revive the old chat.
-Resume in-flight work without changing its original branch, base or gate.
+[Fast Lane](captain/FASTLANE.md): both Captain and Workers connect via Device
+Flow (`gh_app.py connect` / `captain/WORKER_START_PROMPT.md`), workers fetch the
+pinned brief via `worker_lane.py fetch-brief`, push tested checkpoints to
+`agent/<W>/<task>` (chaining with `base_sha`/`base_branch` when needed), and
+post `@Keshab1997` via `worker_lane.py mention`. (Optional Arena-attached
+`arena/*` chats remain supported when `"arena"` is in `task.json`.)
 
 ## Check policy (agent pack v1.13.1) — do not backslide
 

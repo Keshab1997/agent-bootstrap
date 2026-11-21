@@ -1,14 +1,20 @@
-# GitHub-এ brief, Arena-তে কাজ — Captain Fast Lane
+# GitHub-এ brief, Device Flow-তে কাজ — Captain Fast Lane
+
+**এখন আর Arena-তে প্রতিটা worker chat-এ repo attach করতে হবে না।** Captain ও
+Worker — সবাই **GitHub Device Flow** (`gh_app.py`) দিয়ে সংযুক্ত হবে। একবার
+approve করলে ওই একই Worker chat একাধিক task এবং এমনকি একাধিক repo-তেও কাজ
+করতে পারবে (Arena-র ১-PR সীমা বা branch-lock ঝামেলা নেই)।
 
 ## ১. Captain-কে repo আর কাজ বলুন
 
 Captain চালু থাকলে starter আবার লাগবে না। নতুন হলে
-[`CAPTAIN_START_PROMPT.md`](../CAPTAIN_START_PROMPT.md) দিন। সেভ করা login কাজ
-করলে Captain approval চাইবে না; code দেখালেই শুধু GitHub-এ approve করুন।
+[`CAPTAIN_START_PROMPT.md`](../CAPTAIN_START_PROMPT.md) দিন (অথবা
+`captain_up.sh`)। সেভ করা login কাজ করলে Captain নতুন approval চাইবে না;
+code দেখালেই শুধু GitHub-এ approve করুন।
 
 ```text
 <repo>-তে <কাজগুলো> ভাগ করে A/B/C-র brief GitHub-এ push করো।
-প্রতি worker-এর জন্য pinned link দাও। এখন কোনো worker PR merge/close নয়।
+প্রতি worker-এর জন্য pinned link দাও।
 ```
 
 **গতি সবার আগে:** Captain প্রতিটি worker-কে বড়, সম্পূর্ণ কাজ দেবে (পুরো
@@ -16,42 +22,35 @@ feature/screen + test — ছোট ছোট টুকরো নয়), সব
 Worker-রা কাজ করার ফাঁকে Captain নিজের অংশ (shared file, জোড়া লাগানো, ছোট
 fix) নিজেই শেষ করবে — বসে অপেক্ষা করবে না।
 
-Captain একই কাজের repo-তে `captain/briefs/<batch>` branch-এ `BRIEF.md` আর
-`task.json` push করবে। `main`-এ brief যাবে না। GitHub-এ commit যাচাই করার
-পর Captain প্রতি worker-এর জন্য এক লাইনের link দেবে। পুরো brief copy/paste
-বা কোনো ফাইল download/upload করতে হবে না।
+## ২. Worker chat শুরু করা (কোনো repo attach ছাড়াই)
 
-## ২. Worker chat খোলার সময় কাজের repo attach করুন
+1. সাধারণ নতুন chat খুলুন (Arena UI-তে repo attach করার দরকার নেই)।
+2. প্রথমবার chat-এ [`WORKER_START_PROMPT.md`](WORKER_START_PROMPT.md) (বা
+   `worker_up.sh`) আর Captain-এর দেওয়া এক লাইনের link দিন।
+3. Worker `XXXX-XXXX` device code দেখালে শুধু একবার
+   https://github.com/login/device -এ গিয়ে approve করুন। একবার paired হলে ওই
+   একই Worker chat-এ পরপর অনেকগুলো task ও যেকোনো repo-তে কাজ চালানো যাবে।
+4. Worker নিজেই `worker_lane.py fetch-brief` দিয়ে GitHub থেকে brief নামাবে,
+   `agent/<W>/<task>` branch-এ কোড ও test চালিয়ে push করবে।
 
-1. Arena Agent Mode-এ GitHub on করুন। দরকার হলে **Manage repositories**-এ
-   কাজের repo-র access দিন। Worker chat শুরু করার সময় **ওই repo-টাই**
-   select করুন; অন্য project-এর জন্য `agent-bootstrap` attach করবেন না।
-2. ভুল repo বা repo attach না থাকলে worker কাজ শুরু করবে না। সঠিক repo
-   attach করে নতুন chat খুলুন; clone করে বা নতুন token দিয়ে চালাবেন না।
-3. Captain-এর এক লাইনের pinned link দিন। Worker একই GitHub commit থেকে
-   brief আর JSON পড়ে নিজের আসল `arena/*` branch-এ শুধু বরাদ্দ করা file-এ
-   কাজ করবে। চালু সঠিক repo-linked chat হলে সেটা reuse করুন।
+## ৩. Push যাচাই হলে mention ও পরের task
 
-[Arena-র repo connect নির্দেশনা](https://help.arena.ai/articles/1655691990-how-to-use-coding-in-agent-mode)
-
-## ৩. Push যাচাই হলে mention
-
-Worker check চালিয়ে checkpoint push করবে। GitHub-এর branch tip মিলে গেলে
-brief-এ দেওয়া অনুমোদিত issue-তে `@Keshab1997` mention করবে: task, branch,
-base SHA, pushed SHA, files, check ও commit link সহ। Comment access না থাকলে
-Arena-তে `PUSHED` আর `MENTION PENDING` দেখাবে; দরকার হলে Captain যাচাই করে
-নিজের অনুমোদিত access দিয়ে mention দেবে। Push না হলে `BLOCKED`, done নয়।
+Worker test চালিয়ে checkpoint push করবে এবং `worker_lane.py mention` দিয়ে
+brief-এ দেওয়া issue-তে `@Keshab1997` comment পোস্ট করবে (task, branch, base
+SHA, pushed SHA, files, check ও commit link সহ)। Tracker issue না থাকলে
+chat-এই `PUSHED` রিপোর্ট দেবে।
 
 ```text
 Batch <id>-এর GitHub রিপোর্ট দেখে A-এর checkpoint যাচাই করো।
-ঠিক থাকলে একই A chat-এর পরের pinned brief publish করো।
+ঠিক থাকলে A-এর পরের pinned brief publish করো।
 ```
 
 Checkpoint যাচাই হলেই Captain সঙ্গে সঙ্গে পরের বড় brief দেবে; পুরো review
-আর integration worker কাজ করার সময়েই চলবে। Captain শুধু ওই task-এর
-base→tip diff review করবে। পরের brief-এ একই branch আর শেষ যাচাই করা SHA
-যাবে। ওই base-এ দরকারি upstream code না থাকলে নতুন repo-linked chat নিন;
-পুরোনো branch reset/rebase করবেন না।
+আর integration Captain-এর দিকে চলবে। পরের task `main` থেকে বা দরকার হলে
+আগের verified commit (`base_sha` + `base_branch`) থেকে chain করা যাবে।
+
+*(Optional: আগে থেকে কোনো chat-এ Arena repo attach করা থাকলে সেটাও `"arena"`
+brief দিয়ে চালানো যাবে, তবে নতুন কাজের জন্য Device Flow-ই primary।)*
 
 ## ৪. Batch সত্যিই শেষ হলে
 
@@ -59,9 +58,7 @@ base→tip diff review করবে। পরের brief-এ একই branch �
 Finalize batch <id> — কী land হয়েছে এবং কী বাকি দেখাও।
 ```
 
-**প্রতি task-এ PR merge/close নয়।** Arena-তে [এক linked chat-এ এক PR](https://help.arena.ai/articles/1655691990-how-to-use-coding-in-agent-mode)।
-ওই PR [merge বা close হলে একই chat আর push করতে পারে না](https://help.arena.ai/articles/5432423882-how-to-use-agent-mode)।
-Batch শেষে Captain review করবে; CI dispatch আপনার সিদ্ধান্ত। আগে থেকে
-চলতে থাকা কাজ থাকলে তার original branch, base ও check বদলাবেন না।
+Batch শেষে Captain সব verified `agent/*` commit review করে `main`-এ land
+করবে; CI dispatch আপনার সিদ্ধান্ত (বা আপনার অনুমতিতে `ci_dispatch.py`)।
 
-আরও: [GitHub brief-এর নিয়ম](GITHUB_BRIEFS.md) · [Fast Lane commands](FASTLANE.md) · [Captain login](../NEXT_TIME_BANGLA.md)
+আরও: [Worker Starter](WORKER_START_PROMPT.md) · [GitHub brief-এর নিয়ম](GITHUB_BRIEFS.md) · [Fast Lane commands](FASTLANE.md) · [Captain login](../NEXT_TIME_BANGLA.md)

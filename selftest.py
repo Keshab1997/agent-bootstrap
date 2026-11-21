@@ -554,16 +554,18 @@ class PromptTests(unittest.TestCase):
         self.assertEqual(html.unescape(embedded_short), '(চ্যাটে দ্রুত paste করার জন্য)\n\n' + short)
 
     @unittest.skipUnless((SRC.parent / "CAPTAIN_START_PROMPT.md").exists(), "no local docs in standalone mode")
-    def test_captain_starter_has_no_standalone_fallback(self):
+    def test_captain_and_worker_starters_use_device_flow_primary(self):
         text = (SRC.parent / "CAPTAIN_START_PROMPT.md").read_text()
-        # One canonical first paste: it reads both pinned docs, and it never
-        # turns a missing/terminal Arena attachment into a standalone job.
         self.assertIn('cat "$DST/captain/CAPTAIN_PROMPT.md" "$DST/captain/GITHUB_BRIEFS.md"', text)
-        self.assertNotIn('ordinary chats without a repo, use the standalone lane', text)
-        self.assertIn('ordinary chats without an attached repo are **not** a Captain fallback', text)
+        self.assertIn('Device Flow is the primary worker mode', text)
+        self.assertIn('never mix modes mid-task', text)
         playbook = (SRC.parent / "captain" / "CAPTAIN_PROMPT.md").read_text()
+        self.assertIn('Device Flow (`gh_app.py connect`) is the primary worker mode', playbook)
         self.assertIn('not a standalone fallback', playbook)
-        self.assertNotIn('use the standalone lane', playbook)
+        worker_starter = (SRC.parent / "captain" / "WORKER_START_PROMPT.md").read_text()
+        self.assertIn('fetch-brief --url', worker_starter)
+        self.assertIn('gh_app.py', worker_starter)
+        self.assertTrue((SRC.parent / "worker_up.sh").is_file())
 
     def test_skills_are_methods_not_authority(self):
         playbook = (SRC.parent / "captain" / "CAPTAIN_PROMPT.md").read_text()

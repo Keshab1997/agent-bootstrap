@@ -840,3 +840,132 @@ class AuditSecretTests(unittest.TestCase):
 
     def test_unreadable_config_is_reported_not_passed(self):
         self.assertTrue(self.classify('android/key.properties', None))
+
+
+@unittest.skipUnless(shutil.which('git'), 'requires git')
+class DeviceFlowOrchestrationTests(unittest.TestCase):
+    """Device-Flow worker tasks: brief fetch, base_sha/base_branch chaining, and mention."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory(prefix='deviceflow-git-')
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.remote = self.root / 'origin.git'
+        self.seed = self.root / 'captain'
+        self.seed.mkdir()
+        self.env = work.command_env() | dict(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull,
+                                             GIT_TERMINAL_PROMPT='0', GIT_ALLOW_PROTOCOL='file')
+        self.git('init', '-q', '--bare', '-b', 'main', str(self.remote))
+        self.git('init', '-q', '-b', 'main')
+        self.git('config', 'user.name', 'Fixture')
+        self.git('config', 'user.email', 'test@example.invalid')
+        (self.seed / 'lesson.txt').write_text('lesson at main\n')
+        (self.seed / 'tool').mkdir()
+        (self.seed / 'tool' / 'preflight.py').write_text('print("ok")\n')
+        self.git('add', '--', '.')
+        self.git('commit', '-qm', 'initial')
+        self.base = self.git('rev-parse', 'HEAD')
+        self.git('remote', 'add', 'origin', str(self.remote))
+        self.git('push', '-q', 'origin', 'main')
+
+    def git(self, *args, cwd=None):
+        return subprocess.run(['git', *args], cwd=cwd or self.seed, env=self.env, check=True,
+                              capture_output=True, text=True, timeout=20).stdout.strip()
+
+    def test_standalone_chaining_on_prior_checkpoint_and_review_base_guard(self):
+        first = work.Lane(task('step-one'), self.root / 'workbench', _test_remote=str(self.remote))
+        first.start()
+        (first.dir / 'lesson.txt').write_text('step one\n')
+        first.check()
+        c1 = first.publish()['commit']
+
+        # Chaining in a fresh workbench (simulating a resumed or separate sandbox)
+        # using base_sha + base_branch stacks cleanly on c1 without merging into main.
+        second_spec = task('step-two', base_sha=c1, base_branch='agent/A/step-one',
+                           tracker='https://github.com/Keshab1997/fixture/issues/7')
+        second = work.Lane(second_spec, self.root / 'workbench2', _test_remote=str(self.remote))
+        state2 = second.start()
+        self.assertEqual(state2['base_sha'], c1)
+        self.assertEqual((second.dir / 'lesson.txt').read_text(), 'step one\n')
+        (second.dir / 'lesson.txt').write_text('step two\n')
+        second.check()
+        c2 = second.publish()['commit']
+        self.assertEqual(self.git('show', '-s', '--format=%P', c2, cwd=second.dir), c1)
+
+        reviewer = work.Lane(second_spec, self.seed, checkout=self.seed, review=True,
+                             _test_remote=str(self.remote))
+        with self.assertRaisesRegex(work.LaneError, 'Reported base'):
+            reviewer.review('agent/A/step-two', self.base, c2)
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            out.buffer = io.BytesIO()
+            reviewer.review('agent/A/step-two', c1, c2)
+        self.assertIn('step two', out.buffer.getvalue().decode())
+
+    def test_validate_task_rejects_mixed_arena_and_top_level_base(self):
+        with self.assertRaisesRegex(work.LaneError, 'not both'):
+            work.validate_task(task('mixed', base_sha=self.base, arena={'branch': 'auto', 'base_sha': None}))
+        with self.assertRaisesRegex(work.LaneError, 'Invalid branch ref'):
+            work.validate_task(task('bad-ref', base_branch='feature/nope'))
+        with self.assertRaisesRegex(work.LaneError, 'GitHub issue URL'):
+            work.validate_task(task('bad-tracker', tracker='https://example.com/issues/1'))
+
+    def test_fetch_brief_verifies_ancestry_and_writes_validated_files(self):
+        import base64
+        brief_sha = 'a' * 40
+        spec = task('briefed-task', base_sha=None,
+                    tracker='https://github.com/Keshab1997/fixture/issues/12')
+        url = f'https://github.com/Keshab1997/fixture/blob/{brief_sha}/docs/agent-briefs/b1/briefed-task/BRIEF.md'
+
+        def fake_api(method, path, data=None):
+            if path.startswith('/repos/Keshab1997/fixture/compare/'):
+                return {'status': 'ahead'}
+            if 'BRIEF.md' in path:
+                return {'encoding': 'base64', 'content': base64.b64encode(b'# Brief\n').decode()}
+            if 'task.json' in path:
+                return {'encoding': 'base64', 'content': base64.b64encode(json.dumps(spec).encode()).decode()}
+            raise AssertionError(path)
+
+        repo, sha, batch, slug = work.parse_brief_url(url)
+        inbox, parsed = work.fetch_brief(repo, sha, batch, slug, root=self.root / 'wb',
+                                         worker='A', api_fn=fake_api)
+        self.assertEqual(parsed, spec)
+        self.assertEqual((inbox / 'BRIEF.md').read_text(), '# Brief\n')
+        self.assertEqual(json.loads((inbox / 'task.json').read_text()), spec)
+
+        # Reject brief commits not on captain/briefs/<batch>
+        with self.assertRaisesRegex(work.LaneError, 'not on captain/briefs/b1'):
+            work.fetch_brief(repo, sha, batch, slug, root=self.root / 'wb',
+                             api_fn=lambda m, p, d=None: {'status': 'diverged'})
+
+    def test_mention_posts_once_and_deduplicates_retries(self):
+        spec = task('mention-task', tracker='https://github.com/Keshab1997/fixture/issues/9')
+        lane = work.Lane(spec, self.root / 'workbench', _test_remote=str(self.remote))
+        with self.assertRaisesRegex(work.LaneError, 'Task is not started'):
+            lane.mention(api_fn=lambda *a, **k: [])
+        lane.start()
+        (lane.dir / 'lesson.txt').write_text('ready for mention\n')
+        lane.check()
+        done = lane.publish()
+        posted = []
+
+        def fake_api(method, path, data=None):
+            if method == 'GET':
+                return list(posted)
+            if method == 'POST':
+                comment = {'body': data['body'],
+                           'html_url': 'https://github.com/Keshab1997/fixture/issues/9#issuecomment-101'}
+                posted.append(comment)
+                return comment
+            raise AssertionError((method, path))
+
+        url1, created1 = lane.mention(brief_url='https://github.com/Keshab1997/fixture/blob/' + 'b' * 40 + '/docs/agent-briefs/b1/mention-task/BRIEF.md',
+                                      api_fn=fake_api)
+        self.assertTrue(created1)
+        self.assertEqual(len(posted), 1)
+        self.assertIn('@Keshab1997', posted[0]['body'])
+        self.assertIn(done['commit'], posted[0]['body'])
+
+        url2, created2 = lane.mention(api_fn=fake_api)
+        self.assertFalse(created2)
+        self.assertEqual(url1, url2)
+        self.assertEqual(len(posted), 1)

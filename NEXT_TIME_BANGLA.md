@@ -58,20 +58,17 @@ python3 /home/user/agent-bootstrap/device_pair.py poll 60
 `TIMEOUT for this turn` মানে ৬০ সেকেন্ডের অপেক্ষা শেষ, code শেষ নয়। একই command
 আবার চলবে। সত্যিই `EXPIRED` হলে `gh_app.py connect` নতুন code নিতে পারে।
 
-## Workers: GitHub-এর brief, Arena-তে repo attach
+## Workers: Device Flow + GitHub brief (repo attach ছাড়াই)
 
 Captain কাজের repo-তে [brief ও task JSON push](captain/GITHUB_BRIEFS.md) করবে।
-Worker chat শুরু করার সময় Arena Agent Mode-এ **কাজের repo attach** করুন।
-তারপর Captain-এর এক লাইনের pinned link দিন। Brief বা app file হাতে
-copy/download/upload করবেন না। ভুল বা missing attachment হলে `BLOCKED`।
-
-Worker একই `arena/*` branch-এ checkpoint push করবে। Push যাচাই হলে
-অনুমোদিত tracking issue-তে `@Keshab1997` mention করবে। Comment access না
-থাকলে Arena-তে checkpoint link আর `MENTION PENDING` দেবে। Captain checkpoint
-যাচাই করেই শেষ যাচাই করা SHA থেকে পরের বড় brief publish করবে; পুরো review
-worker কাজ করার সময়ে। **PR merge বা close করলে ওই chat আর push করতে পারে
-না** — সিদ্ধান্ত batch-এর শেষে। নতুন base
-দরকার হলে সঠিক repo attach করে নতুন chat নিন। [ধাপে ধাপে ব্যবহার](captain/HOW_TO_START_BN.md)।
+Worker chat-এ শুধু [`captain/WORKER_START_PROMPT.md`](captain/WORKER_START_PROMPT.md)
+(বা `worker_up.sh`) ও Captain-এর এক লাইনের pinned link দিন — Arena UI-তে
+repo attach করার দরকার নেই। Worker নিজেই Device Flow-তে (`gh_app.py connect`)
+কানেক্ট হয়ে `worker_lane.py fetch-brief` দিয়ে brief নামাবে, `agent/<W>/<task>`
+branch-এ checkpoint push করবে, এবং `worker_lane.py mention` দিয়ে `@Keshab1997`
+মেনশন করবে। একবার paired হলে ওই একই Worker chat একাধিক task ও repo-তে চলবে।
+(Optional: কোনো chat-এ আগে থেকেই Arena repo attach থাকলে `"arena"` brief দিয়েও
+কাজ চালানো যাবে।) [ধাপে ধাপে ব্যবহার](captain/HOW_TO_START_BN.md)।
 
 ## Authenticator-এর GitHub code দিলে কি হবে?
 

@@ -27,10 +27,11 @@ curl -fsSL https://raw.githubusercontent.com/Keshab1997/agent-bootstrap/main/set
 
 ## For AI agents — read this first
 
-Captains and standalone agents restore their own saved sessions. If you are
-a Captain worker, stop here and follow [Fast Lane](captain/FASTLANE.md): attach
-the target repo in Arena and read the pinned GitHub brief. Use Arena access,
-not this device flow. Reuse live workspaces; do not share credentials.
+Both Captains and Workers connect with **GitHub Device Flow** (`gh_app.py connect`)
+and reuse their saved workspace sessions across turns, tasks, and repos.
+(Optional Arena-attached mode: if a worker chat already has the target repo
+attached in Arena and the brief specifies `"arena"`, follow [Fast Lane](captain/FASTLANE.md)
+with `--checkout`.)
 
 1. **Run** `python3 gh_app.py connect`. It first reuses a working token, then
    tries the saved refresh token if access expired. Successful recovery prints
@@ -81,31 +82,32 @@ No new PAT, private key, server or repository setting is needed for this update.
 
 ---
 
-## Multiple agents — GitHub briefs, Arena-linked work
+## Multiple agents — GitHub briefs, Device-Flow workers
 
-Start the Captain with [`CAPTAIN_START_PROMPT.md`](CAPTAIN_START_PROMPT.md).
+Start the Captain with [`CAPTAIN_START_PROMPT.md`](CAPTAIN_START_PROMPT.md) (or `captain_up.sh`)
+and each Worker with [`captain/WORKER_START_PROMPT.md`](captain/WORKER_START_PROMPT.md) (or `worker_up.sh`).
 The Captain splits work by file into big, complete tasks (never micro-tasks),
 works its own lane in parallel, and [publishes each brief](captain/GITHUB_BRIEFS.md)
 as `BRIEF.md` and `task.json` under `docs/agent-briefs/<batch>/<task>/` on the
 **target repo's** `captain/briefs/<batch>` branch. Workers get only a short
 launch line with the repo and a commit-pinned link.
 
-- In Arena Agent Mode, **attach the target repo** to each worker chat at the
-  start. No/wrong attachment blocks the task; no standalone workaround.
-- [Fast Lane](captain/FASTLANE.md) reads the pinned docs without changing the
-  attached branch. A worker checks and pushes only its real `arena/*` ref,
-  then mentions `@Keshab1997` in the approved tracking issue when authorized.
-  No comment access: `PUSHED` + `MENTION PENDING` in Arena. No verified push:
-  `BLOCKED` with the reason.
-- The Captain reviews the exact base → pushed SHA from a separate checkout.
-  Keep live linked PRs open; merging or closing one ends pushes from that
-  chat. Reuse the verified tip for the next safe task; finalize only when
-  asked. Preserve original terms for work already in flight.
+- **Device Flow (primary):** workers do **not** need an Arena repo attachment
+  and have no 1-PR limit. Each worker runs `worker_lane.py fetch-brief` to
+  download the brief, `start` → edit → `check` → `diff` → `publish` to push
+  `agent/<W>/<task>` (chaining with `base_sha`/`base_branch` when needed), and
+  `mention` to post `@Keshab1997` on the tracking issue. Once paired, a worker
+  chat stays reusable across tasks and repos.
+- **Optional Arena-attached mode:** if a chat already has the target repo
+  attached in Arena Agent Mode and the brief includes `"arena"`, pass
+  `--checkout` to `worker_lane.py` and keep its `arena/*` branch and linked PR
+  open until batch finalization.
+- The Captain reviews the exact `base → pushed SHA` range from a separate
+  checkout (`worker_lane.py review`) and integrates onto `main`.
 
-For apps using `flutter-builder`, attach the **app repo** and reuse its
-installed preflight and current CI pin. Attach `flutter-builder` itself only
-for work on its shared workflows, installer, or agent pack; use its pytest
-suite. See the [Captain's builder rules](captain/CAPTAIN_PROMPT.md#how-to-use-flutter-builder).
+For apps using `flutter-builder`, workers and Captain use the target repo's
+installed preflight and pinned SDK (`worker_lane.py` handles this automatically).
+See the [Captain's builder rules](captain/CAPTAIN_PROMPT.md#how-to-use-flutter-builder).
 
 **No brief copy/paste or app-file downloads/uploads between chats.** See the
 [Bengali walkthrough](captain/HOW_TO_START_BN.md).

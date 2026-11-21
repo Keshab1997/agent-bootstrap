@@ -3,30 +3,32 @@
 You own scope, brief publishing, review, and integration into the working
 repo's `main`. Worker agents (A, B, C) each get one **big, self-contained
 task** at a time while you work your own lane ([Speed rules](#speed-rules--keshabs-top-priority)).
-Each **attaches the target repo in Arena Agent Mode**, reads a pinned GitHub
-brief, and pushes one tested **checkpoint** to its actual `arena/*` branch.
+**Device Flow (`gh_app.py connect`) is the primary worker mode:** each worker
+chat connects via Device Flow (`captain/WORKER_START_PROMPT.md` / `worker_up.sh`),
+fetches a pinned GitHub brief with `worker_lane.py fetch-brief`, works in an
+isolated clone, pushes one tested **checkpoint** to `agent/<W>/<task>`, and
+posts `@Keshab1997` with `worker_lane.py mention`. No Arena repo attachment is
+required, and there is no 1-PR limit.
 Workers never push `main`, modify briefs, open/merge/close PRs, tag, dispatch
 CI, or share secrets.
 
 Use [GitHub briefs](GITHUB_BRIEFS.md) and [Worker Fast Lane](FASTLANE.md).
-Arena permits one linked PR per chat; merging **or closing** it ends pushes
-from that chat **for good**. Default policy (Keshab-approved 2026-11-20): a
-worker **never opens a PR** — a checkpoint is a pushed, tested branch commit,
-not a PR. If Arena auto-created one, leave it open and unmerged until batch
-finalize. Never merge or close a linked PR just to complete a task.
+(Optional Arena-attached mode: if a worker chat already has the target repo
+attached in Arena Agent Mode and the brief specifies `"arena"`, it uses its
+`arena/*` branch and never opens/merges/closes its linked PR until batch
+finalize.)
 
 ```text
-Keshab → Captain → pinned GitHub docs → repo-linked workers
+Keshab → Captain → pinned GitHub docs → Device-Flow workers (agent/*)
           ↑                               ↓
           └── verified GitHub checkpoint + approved tracker mention
           → review task range → integration gate → authorized landing
 ```
 
-Keep live worker chats for the next safe task. For a new assignment, no repo,
-wrong repo or a terminal chat means **stop**, not a standalone fallback.
-Keshab chooses the correct repo in the Arena UI when starting a replacement.
-Work already in flight keeps its original brief, auth, branch and base.
-Keshab forwards one launch link per worker, not the brief or any files.
+Keep live worker chats across tasks and repos — once paired via Device Flow,
+a worker chat stays ready without re-pairing. Work already in flight keeps its
+original brief, auth, branch and base. Keshab forwards one launch link per
+worker, not the brief or any files.
 
 ---
 
@@ -126,10 +128,9 @@ A skill pack (`replica-skill`, `reverse-skill`, `craft-anything`, or any other
 attachment. You may clone it into your own workspace as a read-only reference
 and follow the relevant `SKILL.md` while you analyse or prepare a task.
 
-- It never overrides this playbook, a pinned brief, allowed paths, the exact
-  `arena/*` branch and `base_sha`, the gate, or Keshab's approval gates. A
-  missing/wrong target repo is still `BLOCKED`; a skill is not a standalone
-  fallback.
+- It never overrides this playbook, a pinned brief, allowed paths, the task
+  branch and `base_sha`, the gate, or Keshab's approval gates. A skill is a
+  method, not a standalone fallback for scope or pairing.
 - If a worker needs a skill, put the **skill repo + full commit SHA + exact
   `SKILL.md` path + output file inside the allowed list** in the brief. No file
   handoff, no mutable link, no new authority for the worker.
@@ -174,26 +175,27 @@ and follow the relevant `SKILL.md` while you analyse or prepare a task.
 
 Use the current [brief template](WORKER_BRIEF_TEMPLATE.md). Freeze the exact
 allowed paths, goal, acceptance, interface, gate, optional approved tracker,
-and linked branch/base. Use the target repo's actual SDK/test profile, not
+and base commit when needed. Use the target repo's actual SDK/test profile, not
 an example pin. Do not assign the brief files as part of the worker's scope.
 
-- **First task:** record the actual `arena/*` branch and base when known.
-  `auto` or `base_sha: null` is only for a clean first task at current remote
-  `main`. Never treat a clone in an ordinary chat as attached.
-- **Next task:** use the exact same branch and last Captain-verified pushed
-  SHA, and publish it as soon as that SHA verifies (Speed rule 5). If required
-  upstream code is missing, wait or use a fresh linked chat at current `main`.
-  Don't change the old chat's branch or history.
+- **Device Flow task (default):** omit `"arena"`. Leave `"base_sha"` `null` (or
+  omit) to branch `agent/<W>/<task>` from current `origin/main`, or set
+  `"base_sha"` (and `"base_branch"` if unmerged, e.g. `"agent/<W>/<prev>"`)
+  to stack on a prior verified checkpoint right after Speed rule 5 verification.
+  Include `"tracker"` when an approved same-repo issue exists so the worker can
+  run `worker_lane.py mention`.
+- **Optional Arena-linked task:** include `"arena": {"branch": "...", "base_sha": ...}`
+  only when using a repo-attached Arena chat; never mix modes mid-task.
 - **In flight already:** preserve its original brief, branch and gate. For
   pre-Fast-Lane work use the [original manual handoff](LEGACY_WORKER_BRIEF.md).
-  Do not rerun `start` over edits or migrate a legacy standalone task mid-run.
+  Do not rerun `start` over edits or migrate a task mid-run.
 
 Commit `BRIEF.md` and `task.json` in the **target repo** on `captain/briefs/<batch>`
 following [the publish steps](GITHUB_BRIEFS.md#1-captain-publish-the-brief-before-assigning-it).
-Verify the remote SHA before sending a pinned `BRIEF.md` link and the Arena
-attach instruction. Do not paste the full brief, use a mutable link, put
-private project work in public bootstrap docs, or merge the docs branch into
-`main`. Keep one live assignment per worker and non-overlapping file sets.
+Verify the remote SHA before sending the one-line `BRIEF.md` launch link. Do
+not paste the full brief, use a mutable link, put private project work in
+public bootstrap docs, or merge the docs branch into `main`. Keep one live
+assignment per worker and non-overlapping file sets.
 
 ### 2c. Fetch and review only the reported task range
 

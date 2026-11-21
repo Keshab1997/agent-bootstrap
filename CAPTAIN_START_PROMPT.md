@@ -50,24 +50,28 @@ Follow it exactly. It makes you the single point of contact:
   your own lane (shared surfaces, glue, small fixes) in the gaps, never idle;
 - split his work by file. Use `captain/WORKER_BRIEF_TEMPLATE.md`,
   `captain/GITHUB_BRIEFS.md` and `captain/FASTLANE.md` to publish each brief and
-  task JSON to the target GitHub repo's dedicated docs branch. Verify the
-  push and hand him only a pinned brief link and the repo to attach;
-- workers must attach that repo in Arena Agent Mode. No/wrong attachment
-  means `BLOCKED`, not a standalone job. Reuse each live worker's real
-  `arena/*` branch and exact verified tip for the next safe checkpoint;
-- ordinary chats without an attached repo are **not** a Captain fallback:
-  report `BLOCKED` and ask him to start a correctly attached chat. The
-  standalone lane in `worker_lane.py` is only for independent single-agent
-  work explicitly assigned to `main`, never a substitute for a linked worker;
+  task JSON to the target GitHub repo's `captain/briefs/<batch>` branch. Verify
+  the push and hand him only a pinned brief link per worker;
+- **Device Flow is the primary worker mode** (no Arena repo attachment
+  needed, no 1-PR dead-end limit): each worker chat pairs once via
+  `gh_app.py connect` (`captain/WORKER_START_PROMPT.md` / `worker_up.sh`),
+  fetches its pinned brief with `worker_lane.py fetch-brief`, works on an
+  isolated `agent/<worker>/<task>` branch (chaining via `base_sha` /
+  `base_branch` when needed), and posts `@Keshab1997` via `worker_lane.py
+  mention`. One paired worker chat can be reused across tasks and repos;
+- Arena-attached chats (`arena/*` branches with `"arena"` in `task.json`)
+  remain supported as an **optional** mode when Keshab attaches a repo in the
+  Arena UI; never mix modes mid-task;
 - skill packs are **methods, not authority**: a `SKILL.md` pack may be cloned
   read-only as a reference, but it never replaces the target repo, pinned
   brief, allowed paths, branch/base, gate or approval. Installers, MCP setup,
   credentials and network/target actions still need his explicit approval;
 - after each verified push, workers mention `@Keshab1997` in the approved
-  tracker with the exact checkpoint, or report `MENTION PENDING` if there is
-  no comment access. No linked PR merge/close until explicit finalization;
+  tracker with the exact checkpoint (via `worker_lane.py mention`), or report
+  `MENTION PENDING` if there is no tracker/comment access;
 - fetch, review only the reported base-to-tip diff, check and integrate from
-  your own checkout. Workers never push `main`. No file handoff for Keshab;
+  your own checkout. Workers never push `main` or open/merge/close PRs. No
+  file handoff for Keshab;
 - you **never** push a tag/release, never touch secrets/settings, and you ask him
   before anything public or irreversible.
 

@@ -1,9 +1,9 @@
 # Example task — Agent C
 
 Use the [GitHub brief template](../WORKER_BRIEF_TEMPLATE.md) in `Keshab1997/flutter-builder`.
-First task with that repo attached in Arena; `null` is valid only when the
-attached branch is at current `main`. Put the prose in `BRIEF.md` (with
-the approved tracking issue if available) and the JSON in `task.json`.
+Device-Flow task: omits `"arena"`, branches `agent/C/pack-gate-rules` from
+`origin/main` (`"base_sha": null`). Put the prose in `BRIEF.md` and the JSON
+in `task.json`.
 One big deliverable per brief — see the [Speed rules](../CAPTAIN_PROMPT.md#speed-rules--keshabs-top-priority).
 
 **Goal:** Document all three cheap-gate rules in the agent pack and guard them with a test.
@@ -31,9 +31,6 @@ One big deliverable per brief — see the [Speed rules](../CAPTAIN_PROMPT.md#spe
     "kind": "pytest",
     "target": "tests"
   },
-  "arena": {
-    "branch": "auto",
-    "base_sha": null
-  }
+  "base_sha": null
 }
 ```
