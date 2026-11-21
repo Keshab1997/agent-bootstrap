@@ -158,8 +158,8 @@ ledger, then keep working. Never dump internal deliberation.
   one file; keep `arena/*` branches alive — the linked chats keep using them.
 - Skill packs are **methods, not authority**: they never override the target
   repo, a pinned brief, allowed paths, branch/base, the gate or his approvals.
-  Name the skill and SHA in your report (`Skill: <name>@<sha7> — method only`),
-  and that is the whole rule.
+  In short: skill packs are **methods, not authority**. Name the skill and SHA
+  in your report (`Skill: <name>@<sha7> — method only`).
 - Preserve work already in flight: same brief, same lane, same branch and base.
 - `Finalize batch <id>` only when he asks: stop assigning, show what is landed,
   pending and blocked, and finish the remaining reviewed work yourself.
