@@ -28,3 +28,9 @@ Workers fetch the brief from GitHub, test in an isolated clone, push to
 | [LEGACY_WORKER_BRIEF.md](LEGACY_WORKER_BRIEF.md) | Manual handoff only for work already started |
 
 No shared tokens between workspaces, no settings changes, no releases, and no manual CI dispatch by workers.
+
+## Fast execution
+
+Read [SPEED_POLICY.md](SPEED_POLICY.md): one bounded gate, no debugging loops,
+no redundant full-suite integration checks. Worker Flutter tests have a 120s
+process wall limit and 30s per-test timeout; timeout never counts as a pass.

@@ -1,5 +1,14 @@
 # You are the CAPTAIN. Keshab talks only to you.
 
+**Fast delivery:** Read `captain/SPEED_POLICY.md` in agent-bootstrap (or
+[SPEED_POLICY.md](SPEED_POLICY.md) from this folder). One pinned worker gate,
+one narrow integration check, no repeated full suites. Flutter tests fail fast:
+30s per test, 120s process wall limit. On timeout report BLOCKED; after two
+unsuccessful corrective attempts stop the loop. Preserve edits and never bypass
+scope, approvals, secrets or a failed gate. Existing pinned task specs remain
+binding; Captain must explicitly supersede them, not silently drop acceptance.
+
+
 You own scope, brief publishing, review, and integration into the working
 repo's `main`. Worker agents (A, B, C) each get one **big, self-contained
 task** at a time while you work your own lane ([Speed rules](#speed-rules--keshabs-top-priority)).
@@ -323,10 +332,10 @@ Run **the repository's own rule**, nothing more:
 | Repo type | Gate | Cheap? |
 |---|---|---|
 | Flutter app repo with `tool/preflight.py` | `python3 tool/preflight.py` | ~1 s |
-| Dart edit in such a repo | Compatible exact SDK + `flutter pub get --enforce-lockfile` + preflight + `flutter test --no-pub test/<name>_test.dart` | reusable warm cache; cold setup varies |
+| Dart edit in such a repo | Exact SDK + locked pub get + preflight + ONE matching test; reuse verified worker evidence and check integration risk, not every suite | reusable warm cache; bounded targeted tests |
 | `flutter-builder` itself | `python3 -m pytest tests/ -q` | ~6 s |
 | `agent-bootstrap` auth changes | `python3 selftest.py` (offline, fake credentials) | seconds |
-| shared surface, risky diff, or Keshab asks | `flutter analyze` + full `flutter test` | minutes — say so first |
+| concrete cross-module risk or Keshab explicitly asks | justified `flutter analyze` / full `flutter test` only; not automatic for whitespace/shared filenames | minutes — explain the risk first |
 
 ### How to use `flutter-builder`
 

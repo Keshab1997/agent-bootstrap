@@ -228,6 +228,20 @@ if 'FIXTURE_FAILS' in environ:
         with self.assertRaisesRegex(work.LaneError, 'Task spec'):
             self.lane(initial, bound).check()
 
+    def test_timed_out_recheck_cannot_publish_old_pass_or_lose_edits(self):
+        lane = self.lane()
+        self.checked(lane)
+        with mock.patch.object(lane, 'run_gate', side_effect=work.LaneError('gate timed out')):
+            with self.assertRaisesRegex(work.LaneError, 'timed out'):
+                lane.check()
+        state = lane.load()
+        self.assertNotIn('checked_tree', state)
+        self.assertNotIn('check_result', state)
+        self.assertEqual((lane.dir / 'lesson.txt').read_text(), 'checkpoint one\n')
+        with self.assertRaisesRegex(work.LaneError, 'Run check successfully'):
+            lane.publish()
+        self.assertEqual(self.heads(), {'refs/heads/main': self.base})
+
     def test_ambiguous_push_recovery_does_not_create_extra_commits(self):
         lane = self.lane()
         self.checked(lane)
@@ -474,29 +488,50 @@ if 'FIXTURE_FAILS' in environ:
         lane = self.lane(task(allowed=(test,), check={'kind': 'flutter', 'version': '3.50.0', 'test': test}))
         lane.start()
         self.write(test, '// not formatted\n', lane.dir)
-        real_run = subprocess.run
+        real_run = work.run_bounded
         commands = []
 
         def fake_run(argv, **kwargs):
             exe = Path(argv[0]).name
             if exe in ('dart', 'flutter'):
                 commands.append((exe, *argv[1:]))
+                if exe == 'flutter' and 'test' in argv:
+                    self.assertEqual(kwargs['timeout'], 120)
                 if exe == 'dart':
                     self.write(test, '// formatted\n', lane.dir)
                 return subprocess.CompletedProcess(argv, 0)
             return real_run(argv, **kwargs)
 
         with mock.patch.object(work, 'ensure_flutter', return_value=self.root / 'flutter') as ensure, \
-                mock.patch.object(work.subprocess, 'run', side_effect=fake_run):
+                mock.patch.object(work, 'run_bounded', side_effect=fake_run):
             checked = lane.check()
             self.assertIn('Flutter 3.50.0', checked['check_result'])
             self.assertEqual(ensure.call_args.args[0], '3.50.0')
         self.assertEqual(commands, [('flutter', 'pub', 'get', '--enforce-lockfile'),
-                                    ('dart', 'format', test), ('flutter', 'test', '--no-pub', test)])
+                                    ('dart', 'format', test), ('flutter', 'test', '--no-pub',
+                                    '--fail-fast', '--timeout', '30s', test)])
         self.write('pubspec.lock', 'modified lock\n', lane.dir)
         with self.assertRaisesRegex(work.LaneError, 'Out-of-scope.*pubspec.lock'):
             lane.publish()
         self.assertEqual(self.heads(), {'refs/heads/main': self.base})
+
+
+class BoundedGateTests(unittest.TestCase):
+    def test_success_and_failure_exit_codes_are_preserved(self):
+        for code in (0, 7):
+            result = work.run_bounded(
+                [work.sys.executable, '-c', f'raise SystemExit({code})'],
+                cwd=Path.cwd(), env=work.command_env(), timeout=5)
+            self.assertEqual(result.returncode, code)
+
+    def test_timeout_reports_blocked_and_stops_the_process_group(self):
+        with mock.patch.object(work.os, 'killpg', wraps=os.killpg) as kill:
+            with self.assertRaisesRegex(work.LaneError, 'no check recorded.*BLOCKED'):
+                work.run_bounded(
+                    [work.sys.executable, '-c', 'import time; time.sleep(30)'],
+                    cwd=Path.cwd(), env=work.command_env(), timeout=0.1)
+            kill.assert_called_once()
+            self.assertEqual(kill.call_args.args[1], work.signal.SIGKILL)
 
 
 class SpecTests(unittest.TestCase):

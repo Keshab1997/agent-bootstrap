@@ -88,3 +88,11 @@ brief uses `"arena"`, materialize the brief from the attached checkout using
   automatically). If there is no tracker or comment access is unavailable,
   return the `PUSHED` block and commit link in chat with `MENTION PENDING`.
 - Never open, merge, or close a PR for notification, and never close the tracker issue.
+
+## Keep briefs fast and consistent
+
+Follow [SPEED_POLICY.md](SPEED_POLICY.md). Select ONE matching gate, preferably
+an existing test file. Do not append “also run all related suites/analyze/full
+tests” as boilerplate. State any genuinely required additional verification
+explicitly with its risk and owner (usually Captain). New global policy never
+silently removes acceptance from already-issued pinned briefs.

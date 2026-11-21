@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -61,6 +62,32 @@ HELPER = r'''!f() {
 
 class LaneError(RuntimeError):
     pass
+
+
+# Bounded worker gates: cold SDK setup is separate from test execution.
+TEST_WALL_SECONDS = 120
+TEST_CASE_TIMEOUT = '30s'
+
+
+def run_bounded(args, *, cwd, env, timeout):
+    """Stream output and kill the entire command group on timeout (Linux)."""
+    with subprocess.Popen(args, cwd=cwd, env=env, start_new_session=True) as process:
+        try:
+            process.communicate(timeout=timeout)
+        except (subprocess.TimeoutExpired, KeyboardInterrupt) as error:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.communicate()
+            if isinstance(error, KeyboardInterrupt):
+                raise
+            raise LaneError(
+                f'{Path(args[0]).name} gate timed out after {timeout}s; '
+                'no check recorded. Preserve edits and report BLOCKED with the '
+                'last failing test/output. Do not loop or increase the timeout.'
+            ) from error
+        return subprocess.CompletedProcess(args, process.returncode)
 
 
 def is_sha(value):
@@ -599,8 +626,8 @@ class Lane:
         kind = check['kind']
         env = command_env()
 
-        def run(*args, environment=env):
-            p = subprocess.run(args, cwd=self.dir, env=environment, timeout=300)
+        def run(*args, environment=env, budget=300):
+            p = run_bounded(args, cwd=self.dir, env=environment, timeout=budget)
             if p.returncode:
                 raise LaneError(f'{Path(args[0]).name} check failed (exit {p.returncode}); see its output above.')
 
@@ -632,7 +659,8 @@ class Lane:
         preflight = (self.dir / 'tool' / 'preflight.py').is_file()
         if preflight:
             run(sys.executable, '-B', 'tool/preflight.py')
-        run(flutter, 'test', '--no-pub', test, environment=flutter_env)
+        run(flutter, 'test', '--no-pub', '--fail-fast', '--timeout',
+            TEST_CASE_TIMEOUT, test, environment=flutter_env, budget=TEST_WALL_SECONDS)
         return ('preflight passed; ' if preflight else '') + f'Flutter {version}: {test} passed', snapshot
 
     def check(self):

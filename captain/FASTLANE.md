@@ -1,5 +1,14 @@
 # Worker Fast Lane: Device Flow brief → verified checkpoint
 
+**Fast delivery:** Read `captain/SPEED_POLICY.md` in agent-bootstrap (or
+[SPEED_POLICY.md](SPEED_POLICY.md) from this folder). One pinned worker gate,
+one narrow integration check, no repeated full suites. Flutter tests fail fast:
+30s per test, 120s process wall limit. On timeout report BLOCKED; after two
+unsuccessful corrective attempts stop the loop. Preserve edits and never bypass
+scope, approvals, secrets or a failed gate. Existing pinned task specs remain
+binding; Captain must explicitly supersede them, not silently drop acceptance.
+
+
 [বাংলায় শুরু করুন](HOW_TO_START_BN.md) · [Worker starter](WORKER_START_PROMPT.md) · [GitHub briefs](GITHUB_BRIEFS.md) · [Captain playbook](CAPTAIN_PROMPT.md)
 
 **Device Flow (`gh_app.py connect`) is the primary worker mode.** Workers do
@@ -86,7 +95,7 @@ manual `git reset`.
 | `check` value | Runs |
 |---|---|
 | `{"kind":"preflight"}` | `python3 -B tool/preflight.py`; suitable only when it covers the task |
-| `{"kind":"flutter","version":"3.50.0","test":"test/home_screen_test.dart"}` | Exact named SDK, `flutter pub get --enforce-lockfile`, format changed Dart source, preflight if present, then `flutter test --no-pub` on one test file |
+| `{"kind":"flutter","version":"3.50.0","test":"test/home_screen_test.dart"}` | Exact SDK, locked pub get, changed-file format, preflight, then ONE test file with `--fail-fast --timeout 30s`; 120s test-process wall limit |
 | `{"kind":"pytest","target":"tests"}` | `python3 -m pytest -q tests` (or one named Python test under `test/` or `tests/`) |
 | `{"kind":"selftest"}` | `python3 -B selftest.py` |
 

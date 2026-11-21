@@ -12,23 +12,24 @@ the point**: never wait on CI, never run a check the change does not need.
 
 ## 0. Check your role and current branch first
 
-If this is a Captain A/B/C assignment, require the **target repo attached in
-Arena Agent Mode**. Use the Captain's pinned GitHub `BRIEF.md` link and
-`captain/FASTLANE.md` in a separate verified `Keshab1997/agent-bootstrap`
-clone. Read `BRIEF.md` and `task.json` at the same commit. Keep the actual
-`arena/*` branch and native Arena auth. Missing/wrong repo, missing pin, or
-a terminal linked PR means `BLOCKED`, not a clone or new pairing.
+If this is a Captain A/B/C assignment, use the pinned GitHub brief and current
+`captain/WORKER_START_PROMPT.md` / `captain/FASTLANE.md` from agent-bootstrap.
+**Device Flow is primary**: no Arena attachment or gh CLI is needed. Pair in
+this worker's own workspace, fetch-brief, then start the managed isolated clone.
+ONLY a task.json with `arena` uses its already-attached `arena/*` checkout.
+Never mix modes mid-task. Do not follow independent direct-to-main setup below.
 
-For a Captain task, follow only Fast Lane, not the single-agent setup below.
-After verifying your checkpoint, mention `@Keshab1997` on the approved
-tracking issue, or report `MENTION PENDING` in Arena when you cannot comment.
-Do not merge or close the linked PR. The remaining direct-to-main instructions
-apply only to independent work explicitly assigned to `main`.
+Read `captain/SPEED_POLICY.md`: one pinned worker gate, no extra test battery.
+Flutter tests: fail fast, 30s per test, 120s wall. Timeout → BLOCKED; at most two
+unsuccessful corrective attempts, then preserve edits and report. “kiholo” /
+“কী হলো” is a progress question: give actual status and continue the task.
+Never bypass scope, a failed gate or verified push. Mention the approved tracker
+after PUSHED, or report MENTION PENDING. Workers never open/merge/close PRs.
 
 ## 1. Restore GitHub access — approve only when recovery is not possible
 
 Skip this pairing setup if the task can use the workspace’s existing Git access.
-Captain workers use only the attached repo’s existing Arena access.
+Device-Flow workers use their own saved session; optional Arena tasks use native access.
 
 ```bash
 DST=/home/user/agent-bootstrap   # keep the session in this workspace between turns
@@ -60,7 +61,7 @@ python3 "$DST/gh_app.py" connect   # reuse token -> refresh -> reuse pending cod
 - `/home/user/agent-bootstrap/secrets/` persists in **this workspace**, not every
   new chat/sandbox. An entirely fresh captain workspace still needs approval.
   Reuse your own saved login for independent work across batches. Never share
-  tokens or copy them to linked workers; their Arena access is separate.
+  tokens or copy them to workers; each workspace pairs independently.
 
 ## 2. Flutter SDK — only for Dart work (Fast Lane runs its own pinned gate)
 
@@ -90,7 +91,7 @@ that block are Keshab's own — never delete them.
 |---|---|
 | anything | `python3 tool/preflight.py` (~1 s) |
 | a Dart edit | `flutter test test/<name>_test.dart` — that one file |
-| shared surface / risky diff / Keshab asks | `flutter analyze` + full `flutter test` |
+| concrete cross-module risk / Keshab explicitly asks | justify analyze/full tests first; shared filenames alone do not require a full suite |
 
 - **Never** `flutter build apk|aab|web` or `gradlew` locally "just to check".
 - **Never** rerun the full battery after a small edit. If a check takes
@@ -156,8 +157,8 @@ When code has not pushed, report `BLOCKED` with the reason, not done.
 
 If Keshab hands you **`CAPTAIN_START_PROMPT.md`** instead of this file, you are the
 **captain**: publish task briefs in the target repo's GitHub docs, then send
-pinned links to workers with that repo attached in Arena. Workers checkpoint
-their real `arena/*` branch. The Captain reviews the exact range and owns
+pinned links to independently paired workers. Workers checkpoint
+`agent/<worker>/<task>`; Arena attachment is optional only for an `arena` task. The Captain reviews the exact range and owns
 integration. No file handoff and no linked PR merge/close per task. See the
 [Captain playbook](captain/CAPTAIN_PROMPT.md) and [GitHub briefs](captain/GITHUB_BRIEFS.md).
 
@@ -165,12 +166,12 @@ integration. No file handoff and no linked PR merge/close per task. See the
 
 ## সংক্ষিপ্ত version (চ্যাটে দ্রুত paste করার জন্য)
 
-> Captain task হলে Arena-তে কাজের repo attach করো। Captain-এর pinned GitHub brief
-> আর একই commit-এর `task.json` পড়ে `captain/FASTLANE.md` মেনে আসল `arena/*` branch-এ
-> push করো। Repo attach না থাকলে `BLOCKED`। Push যাচাই হলে অনুমোদিত issue-তে
-> `@Keshab1997` mention, না পারলে `MENTION PENDING`। PR merge/close কোরো না।
-> আলাদা single-agent কাজে `AGENTS.md` পড়ো; `main` শুধু স্পষ্ট অনুমতি পেলে।
-> Saved login থাকলে আবার approval চাইবে না। **CI আমি চালাবো** — অপেক্ষা কোরো না।
+> Captain task হলে pinned brief ও `task.json` দিয়ে `captain/FASTLANE.md` মানো।
+> Device Flow primary; repo attach লাগবে শুধু `arena` task-এ। একই workspace-এর
+> saved login reuse করো। একটাই নির্দিষ্ট gate; Flutter test ৩০ সেকেন্ড/কেস,
+> ১২০ সেকেন্ড wall limit। Timeout হলে থামো; দুইবার fix ব্যর্থ হলে BLOCKED জানাও।
+> Verified push-এর পরে tracker mention, না থাকলে MENTION PENDING। main/PR/CI
+> worker-এর নয়। Full suite বারবার নয়; scope ও failed gate bypass-ও নয়।
 
 ---
 

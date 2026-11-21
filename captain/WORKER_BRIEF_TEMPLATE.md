@@ -12,7 +12,7 @@ the exact handoff and reporting steps.
 # {{TASK}} — Worker {{LETTER}}
 
 **Repository:** `Keshab1997/{{REPO}}`
-**Goal:** {{one complete deliverable — a whole feature, screen or module with its tests}}
+**Goal:** {{one complete deliverable — a whole feature, screen or module; reuse matching tests}}
 **Acceptance:**
 
 1. {{testable result}}
@@ -21,6 +21,11 @@ the exact handoff and reporting steps.
 
 **Interface / exclusions:** {{exact contracts to keep; what you must not change}}
 **Scope and gate:** See [task.json](task.json) at this same commit. Do not edit it.
+Run ONLY that gate; no extra suites/analyze/screenshots unless explicitly required
+here for a concrete risk. Prefer an existing matching test file, adding focused
+regressions only as needed. Flutter: fail-fast, 30s/test, 120s wall. Timeout →
+BLOCKED; two unsuccessful corrective attempts → stop and report exact error,
+changed files and remaining acceptance. Never bypass a failed gate.
 **Skill method (optional):** {{skill repo@full SHA — exact SKILL.md path — output file inside allowed list; or "none"}} — a method only; this brief and the playbook still rule.
 **Report:** {{approved same-repo tracking issue URL + @Keshab1997, or worker chat (no tracker)}}
 

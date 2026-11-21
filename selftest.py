@@ -567,6 +567,21 @@ class PromptTests(unittest.TestCase):
         self.assertIn('gh_app.py', worker_starter)
         self.assertTrue((SRC.parent / "worker_up.sh").is_file())
 
+    def test_speed_contract_is_visible_in_all_role_entrypoints(self):
+        for name in ('CAPTAIN_START_PROMPT.md', 'AGENT_START_PROMPT.md',
+                     'captain/CAPTAIN_PROMPT.md', 'captain/WORKER_START_PROMPT.md',
+                     'captain/FASTLANE.md'):
+            text = (SRC.parent / name).read_text()
+            self.assertIn('SPEED_POLICY.md', text, name)
+            self.assertIn('120', text, name)
+        generic = (SRC.parent / 'PROMPT-FOR-NEW-AGENT.txt').read_text()
+        self.assertIn('Device Flow is primary', generic)
+        self.assertNotIn('require the **target repo attached', generic)
+        policy = (SRC.parent / 'captain/SPEED_POLICY.md').read_text()
+        self.assertIn('Existing in-flight task specs remain unchanged', policy)
+        self.assertIn('no worker task.json edits', policy)
+        self.assertIn('TWO corrective attempts', policy)
+
     def test_skills_are_methods_not_authority(self):
         playbook = (SRC.parent / "captain" / "CAPTAIN_PROMPT.md").read_text()
         starter = (SRC.parent / "CAPTAIN_START_PROMPT.md").read_text()
