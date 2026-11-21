@@ -542,9 +542,10 @@ class PromptTests(unittest.TestCase):
     @unittest.skipUnless((SRC.parent / "CAPTAIN_START_PROMPT.md").exists(), "no local docs in standalone mode")
     def test_one_attached_repo_lane_is_the_flow(self):
         text = (SRC.parent / "CAPTAIN_START_PROMPT.md").read_text()
-        self.assertIn('cat "$DST/captain/CAPTAIN_PROMPT.md" "$DST/captain/GITHUB_BRIEFS.md"', text)
-        self.assertIn('the flow:** Keshab attaches the target repo', text)
-        self.assertIn('you own CI', text)
+        self.assertIn('cat "$DST/captain/CAPTAIN_PROMPT.md" "$DST/captain/FASTLANE.md"', text)
+        self.assertIn('captain/GITHUB_BRIEFS.md', text)
+        self.assertIn('## The flow you own', text)
+        self.assertIn('You own CI and you fix the red', text)
         self.assertNotIn('Option B', text)
         playbook = (SRC.parent / "captain" / "CAPTAIN_PROMPT.md").read_text()
         self.assertIn('One lane — Arena-attached workers', playbook)
